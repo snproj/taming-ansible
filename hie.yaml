@@ -1,0 +1,10 @@
+cradle:
+  cabal:
+    - path: "src"
+      component: "lib:taming-ansible"
+
+    - path: "app/Main.hs"
+      component: "taming-ansible:exe:taming-ansible"
+
+    - path: "test"
+      component: "taming-ansible:test:taming-ansible-test"
