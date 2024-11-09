@@ -102,16 +102,18 @@ resolveAttributeSet (AttributeSet
     _kwFailedWhen
     _kwUntil
     _kwRetries
-    _kwRegister) = do
+    _kwRegister
+    _kwIgnoreErrors) = do
         _kwForceHandlers' <- traverse resolveVar _kwForceHandlers
         _kwNotify' <- traverse resolveVar _kwNotify
         _kwLoop' <- traverse resolveKWLoop _kwLoop
-        _kwWhen' <- traverse resolveVar _kwWhen
+        _kwWhen' <- resolveVar _kwWhen
         _kwVars' <- traverse resolveVar _kwVars
         _kwChangedWhen' <- traverse resolveVar _kwChangedWhen
         _kwFailedWhen' <- traverse resolveVar _kwFailedWhen
         _kwUntil' <- traverse resolveVar _kwUntil
-        _kwRetries' <- traverse resolveVar _kwRetries
+        _kwRetries' <- resolveVar _kwRetries
+        _kwIgnoreErrors' <- resolveVar _kwIgnoreErrors
         return (AttributeSet 
             _kwName
             _kwForceHandlers'
@@ -124,65 +126,66 @@ resolveAttributeSet (AttributeSet
             _kwUntil'
             _kwRetries'
             _kwRegister
+            _kwIgnoreErrors'
             )
 
-resolveAlwaysHandler :: AlwaysHandler -> Reader SymbolTable AlwaysHandler
-resolveAlwaysHandler (AlwaysHandler neHandler) = do
-    neHandler' <- traverse resolveHandler neHandler
-    return (AlwaysHandler neHandler')
+-- resolveAlwaysHandler :: AlwaysHandler -> Reader SymbolTable AlwaysHandler
+-- resolveAlwaysHandler (AlwaysHandler neHandler) = do
+--     neHandler' <- traverse resolveHandler neHandler
+--     return (AlwaysHandler neHandler')
 
-resolveRescueHandler :: RescueHandler -> Reader SymbolTable RescueHandler
-resolveRescueHandler (RescueHandler neHandler mAlwaysHandler) = do
-    neHandler' <- traverse resolveHandler neHandler
-    mAlwaysHandler' <- traverse resolveAlwaysHandler mAlwaysHandler
-    return (RescueHandler neHandler' mAlwaysHandler')
+-- resolveRescueHandler :: RescueHandler -> Reader SymbolTable RescueHandler
+-- resolveRescueHandler (RescueHandler neHandler mAlwaysHandler) = do
+--     neHandler' <- traverse resolveHandler neHandler
+--     mAlwaysHandler' <- traverse resolveAlwaysHandler mAlwaysHandler
+--     return (RescueHandler neHandler' mAlwaysHandler')
 
-resolveBlockHandler :: BlockHandler -> Reader SymbolTable BlockHandler
-resolveBlockHandler (BlockHandler neHandler mRescueHandler) = do
-    neHandler' <- traverse resolveHandler neHandler
-    mRescueHandler' <- traverse resolveRescueHandler mRescueHandler
-    return (BlockHandler neHandler' mRescueHandler')
+-- resolveBlockHandler :: BlockHandler -> Reader SymbolTable BlockHandler
+-- resolveBlockHandler (BlockHandler neHandler mRescueHandler) = do
+--     neHandler' <- traverse resolveHandler neHandler
+--     mRescueHandler' <- traverse resolveRescueHandler mRescueHandler
+--     return (BlockHandler neHandler' mRescueHandler')
 
-resolveAlwaysTask :: AlwaysTask -> Reader SymbolTable AlwaysTask
-resolveAlwaysTask (AlwaysTask neTask) = do
-    neTask' <- traverse resolveTask neTask
-    return (AlwaysTask neTask')
+resolveAlwaysTask :: Always a -> Reader SymbolTable (Always a)
+resolveAlwaysTask (Always neTask) = do
+    neTask' <- traverse resolveTH neTask
+    return (Always neTask')
 
-resolveRescueTask :: RescueTask -> Reader SymbolTable RescueTask
-resolveRescueTask (RescueTask neTask mAlwaysTask) = do
-    neTask' <- traverse resolveTask neTask
+resolveRescueTask :: Rescue a -> Reader SymbolTable (Rescue a)
+resolveRescueTask (Rescue neTask mAlwaysTask) = do
+    neTask' <- traverse resolveTH neTask
     mAlwaysTask' <- traverse resolveAlwaysTask mAlwaysTask
-    return (RescueTask neTask' mAlwaysTask')
+    return (Rescue neTask' mAlwaysTask')
 
-resolveBlockTask :: BlockTask -> Reader SymbolTable BlockTask
-resolveBlockTask (BlockTask neTask mRescueTask) = do
-    neTask' <- traverse resolveTask neTask
+resolveBlockTask :: Block a -> Reader SymbolTable (Block a)
+resolveBlockTask (Block neTask mRescueTask) = do
+    neTask' <- traverse resolveTH neTask
     mRescueTask' <- traverse resolveRescueTask mRescueTask
-    return (BlockTask neTask' mRescueTask')
+    return (Block neTask' mRescueTask')
 
-resolveTask :: Task -> Reader SymbolTable Task
-resolveTask (AtomicTask attSet modDecl) = do
+resolveTH :: TH a -> Reader SymbolTable (TH a)
+resolveTH (Atomic attSet modDecl) = do
     attSet' <- resolveAttributeSet attSet
     let newScopeAddons = kwVars attSet'
     modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
-    return (AtomicTask attSet' modDecl')
-resolveTask (TaskContainingABlock attSet blockTask) = do
+    return (Atomic attSet' modDecl')
+resolveTH (ContainingBlock attSet blockTask) = do
     attSet' <- resolveAttributeSet attSet
     let newScopeAddons = kwVars attSet'
     blockTask' <- maybeWithNewScope newScopeAddons resolveBlockTask blockTask
-    return (TaskContainingABlock attSet' blockTask')
+    return (ContainingBlock attSet' blockTask')
 
-resolveHandler :: Handler -> Reader SymbolTable Handler
-resolveHandler (AtomicHandler attSet modDecl) = do
-    attSet' <- resolveAttributeSet attSet
-    let newScopeAddons = kwVars attSet'
-    modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
-    return (AtomicHandler attSet' modDecl')
-resolveHandler (HandlerContainingABlock attSet blockHandler) = do
-    attSet' <- resolveAttributeSet attSet
-    let newScopeAddons = kwVars attSet'
-    blockHandler' <- maybeWithNewScope newScopeAddons resolveBlockHandler blockHandler
-    return (HandlerContainingABlock attSet' blockHandler')
+-- resolveHandler :: Handler -> Reader SymbolTable Handler
+-- resolveHandler (AtomicHandler attSet modDecl) = do
+--     attSet' <- resolveAttributeSet attSet
+--     let newScopeAddons = kwVars attSet'
+--     modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
+--     return (AtomicHandler attSet' modDecl')
+-- resolveHandler (HandlerContainingABlock attSet blockHandler) = do
+--     attSet' <- resolveAttributeSet attSet
+--     let newScopeAddons = kwVars attSet'
+--     blockHandler' <- maybeWithNewScope newScopeAddons resolveBlockHandler blockHandler
+--     return (HandlerContainingABlock attSet' blockHandler')
 
 
 resolvePlay :: Play -> Reader SymbolTable Play
@@ -194,8 +197,8 @@ resolvePlay (Play
     _roleNames) = do
         _attributeSet' <- resolveAttributeSet _attributeSet
         let newScopeAddons = kwVars _attributeSet'
-        _tasks' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveTask)) _tasks
-        _handlers' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveHandler)) _handlers
+        _tasks' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveTH)) _tasks
+        _handlers' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveTH)) _handlers
         return (Play _hostPattern _attributeSet' _tasks' _handlers' _roleNames)
 
 resolvePlaybook :: Playbook -> Reader SymbolTable Playbook

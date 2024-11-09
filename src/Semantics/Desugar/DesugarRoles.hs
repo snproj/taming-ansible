@@ -1,5 +1,5 @@
 {-# LANGUAGE LambdaCase #-}
-module Semantics.Desugar where
+module Semantics.Desugar.DesugarRoles where
 
 import GrammarTypes.AnsibleGrammarTypes
 import Data.Map (elems, Map, empty, insert, lookup, map)
@@ -7,15 +7,6 @@ import Control.Monad.Reader (Reader, ask, MonadTrans (lift))
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust)
 import Data.List.NonEmpty (filter)
-
--- desugarPlainRoleCalls :: Play -> Reader (Maybe (Map String Role)) Play
--- desugarPlainRoleCalls (Play hp attSet ts hs rNames) = do
---     roles <- ask
---     case roles of
---         Nothing -> return (Play hp attSet ts hs rNames)
---         Just msr -> case rNames of
---             Nothing -> return (Play hp attSet ts hs rNames)
---             Just nList -> do 
 
 
 desugarPlainRoleCalls :: Play -> Reader (Maybe (Map String Role)) Play
@@ -44,10 +35,7 @@ desugarPlainRoleCalls (Play hp attSet ts hs rNames) = do
     return (fromMaybe (Play hp attSet ts hs Nothing) res)
 
 
-
-
-
-getMainTasksFromRole :: Role -> Maybe [Task]
+getMainTasksFromRole :: Role -> Maybe [TH TaskMarker]
 getMainTasksFromRole (Role neCRD) = do
     let justTaskDirs = Data.List.NonEmpty.filter (\case {TasksDir _ -> True; _ -> False}) neCRD
     taskDir <- case justTaskDirs of
@@ -57,11 +45,11 @@ getMainTasksFromRole (Role neCRD) = do
     getTaskFileFromTaskDir taskDir MainName
 
 
-getTaskFileFromTaskDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [Task]
-getTaskFileFromTaskDir (TasksDir mnt) n = Data.Map.lookup n mnt
+getTaskFileFromTaskDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH TaskMarker]
+getTaskFileFromTaskDir (TasksDir mnt) n =  Data.Map.lookup n mnt
 getTaskFileFromTaskDir _ _ = error "ERROR: Tried to get task file from non-task dir"
 
-getMainHandlersFromRole :: Role -> Maybe [Handler]
+getMainHandlersFromRole :: Role -> Maybe [TH HandlerMarker]
 getMainHandlersFromRole (Role neCRD) = do
   let justHandlerDirs = Data.List.NonEmpty.filter (\case HandlersDir _ -> True; _ -> False) neCRD
   handlerDir <- case justHandlerDirs of
@@ -70,70 +58,9 @@ getMainHandlersFromRole (Role neCRD) = do
     _ -> error ""
   getHandlerFileFromHandlerDir handlerDir MainName
 
-getHandlerFileFromHandlerDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [Handler]
+getHandlerFileFromHandlerDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH HandlerMarker]
 getHandlerFileFromHandlerDir (HandlersDir mnt) n = Data.Map.lookup n mnt
 getHandlerFileFromHandlerDir _ _ = error "ERROR: Tried to get handler file from non-handler dir"
-
-insertLoopVarString :: String -> String -> [JinjaElem] -> [JinjaElem]
--- insertLoopVarString "item" "1"
-insertLoopVarString lpVar lpVal = Prelude.map (\case
-        JustString t -> JustString t
-        UnresolvedVarRef n -> if lpVar == n
-            then JustString lpVal
-            else UnresolvedVarRef n)
-
-jjeJustStringToString :: JinjaElem -> Maybe String
-jjeJustStringToString jje = case jje of
-    JustString s -> Just s
-    UnresolvedVarRef _ -> Nothing
-
-jjeAllResolvedToString :: [JinjaElem] -> Either [JinjaElem] String
-jjeAllResolvedToString jjes = let
-    mStrings = Prelude.map jjeJustStringToString jjes
-    in if all isJust mStrings
-        then Right $ concatMap fromJust mStrings
-        else Left jjes
-
-insertLoopVar :: String -> Var -> Var -> Var
--- insertLoopVar "item" "1" "hi {{item}}"
-insertLoopVar lpVar lpVal jjeVar = case jjeVar of
-    VarContainingJinja jjeVar' -> let
-        lpVal' = show lpVal
-        inserted = insertLoopVarString lpVar lpVal' jjeVar'
-        in case jjeAllResolvedToString inserted of
-            Left jjes -> VarContainingJinja jjes
-            Right s -> SimpleVarString s
-    ListVar varList -> let
-        varList' = Prelude.map (insertLoopVar lpVar lpVal) varList
-        in ListVar varList'
-    DictVar msv -> let
-        msv' = Data.Map.map (insertLoopVar lpVar lpVal) msv
-        in DictVar msv'
-    SimpleVarBool b -> SimpleVarBool b
-    SimpleVarFloat f -> SimpleVarFloat f
-    SimpleVarInt i -> SimpleVarInt i
-    SimpleVarString s -> SimpleVarString s
-
-
-
-insertOneLoopVar :: String -> Map String Var -> Var -> Map String Var
--- insertOneLoopVar "item" somemap "1"
-insertOneLoopVar lpVar msv lpVal = Data.Map.map (insertLoopVar lpVar lpVal) msv
-
-unrollLoop :: KWLoop -> ModDecl -> [ModDecl]
-unrollLoop _kwLoop modDecl = let
-    lpVals = case loopList _kwLoop of
-        (ListVar vars) -> vars
-        _ -> error "ERROR: lpVal must be ListVar!"
-    lpVar = case loopVar _kwLoop of
-        (SimpleVarString s) -> s
-        _ -> error "lpVar must be SimpleVarString!"
-    in case modDecl of
-        (GenericModDecl _name msv) -> let
-            msvs = Prelude.map (insertOneLoopVar lpVar msv) lpVals
-            modDecls = Prelude.map (GenericModDecl _name) msvs
-            in modDecls
-        _ -> error "ERROR: Loop unrolling not implemented yet for non-generic modDecls!"
 
 
 

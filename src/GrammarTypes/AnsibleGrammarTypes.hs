@@ -27,16 +27,22 @@ module GrammarTypes.AnsibleGrammarTypes
         -- KWUntil,
         -- KWRetries,
         -- KWRegister,
-        Task(..),
-        Handler(..),
-        -- TH(..),
+        -- Task(..),
+        -- Handler(..),
+        -- Marker(..),
+        TH(..),
+        Block(..),
+        Rescue(..),
+        Always(..),
         ModDecl(..),
-        BlockTask(..),
-        RescueTask(..),
-        AlwaysTask(..),
-        BlockHandler(..),
-        RescueHandler(..),
-        AlwaysHandler(..),
+        TaskMarker(..),
+        HandlerMarker(..),
+        -- BlockTask(..),
+        -- RescueTask(..),
+        -- AlwaysTask(..),
+        -- BlockHandler(..),
+        -- RescueHandler(..),
+        -- AlwaysHandler(..),
         -- UnresolvedVarRef(..),
         -- RawJJEVar(..),
         -- IsTaskOrHandler
@@ -75,8 +81,8 @@ data Playbook = PlaybookDefinedHere (NonEmpty Play)
 data Play = Play {
     hostPattern :: HostPattern,
     attributeSet :: AttributeSet,
-    tasks :: Maybe [Task],
-    handlers :: Maybe [Handler],
+    tasks :: Maybe [TH TaskMarker],
+    handlers :: Maybe [TH HandlerMarker],
     roleNames :: Maybe [String]
 } deriving (Generic, Show, Eq, Ord)
 
@@ -99,9 +105,16 @@ data HostPattern = UnionHosts HostPattern HostPattern
 newtype Role = Role (NonEmpty CompulsoryRoleDir)
     deriving (Generic, Show, Eq, Ord)
 
+-- data SumCompulsoryRoleDir where
+--     SumCompulsoryRoleDir :: CompulsoryRoleDir a -> SumCompulsoryRoleDir
+--     deriving (Generic, Show, Eq, Ord)
+
+-- data CompulsoryRoleDir a = CompulsoryRoleDir (Map RoleSubDirFileName [TH a])
+--     deriving (Generic, Show, Eq, Ord)
+
 data CompulsoryRoleDir
-    = TasksDir (Map RoleSubDirFileName [Task])
-    | HandlersDir (Map RoleSubDirFileName [Handler])
+    = TasksDir (Map RoleSubDirFileName [TH TaskMarker])
+    | HandlersDir (Map RoleSubDirFileName [TH HandlerMarker])
     deriving (Generic, Show, Eq, Ord)
 
 data RoleSubDirFileName = MainName
@@ -166,13 +179,14 @@ data AttributeSet = AttributeSet {
     kwForceHandlers :: Maybe Var,
     kwNotify :: Maybe Var,
     kwLoop :: Maybe KWLoop,
-    kwWhen :: Maybe Var,
+    kwWhen :: Var,
     kwVars :: Maybe Var,
     kwChangedWhen :: Maybe Var,
     kwFailedWhen :: Maybe Var,
     kwUntil :: Maybe Var,
-    kwRetries :: Maybe Var,
-    kwRegister :: Maybe String
+    kwRetries :: Var,
+    kwRegister :: Maybe String,
+    kwIgnoreErrors :: Var
 } deriving (Generic, Show, Eq, Ord)
 
 
@@ -198,15 +212,41 @@ data KWLoop = KWLoop {
 
 -- might need to bring back TaskMarker if this recursive definition comes back
 -- to bite us in the behind
-data Task
-    = AtomicTask AttributeSet ModDecl
-    | TaskContainingABlock AttributeSet BlockTask
+
+-- class Marker a
+-- instance Marker TaskMarker
+-- data family Marker a
+data TaskMarker = TaskMarker
+data HandlerMarker = HandlerMarker
+
+-- data instance Marker TaskMarker
+-- data instance Marker HandlerMarker
+-- newtype Task = Task TH TaskMarker
+-- newtype Handler = Handler TH HandlerMarker
+
+data TH a
+    = Atomic AttributeSet ModDecl
+    | ContainingBlock AttributeSet (Block a)
     deriving (Generic, Show, Eq, Ord)
 
-data Handler
-    = AtomicHandler AttributeSet ModDecl
-    | HandlerContainingABlock AttributeSet BlockHandler
-    deriving (Generic, Show, Eq, Ord)
+data Block a = Block (NonEmpty (TH a)) (Maybe (Rescue a))
+  deriving (Generic, Show, Eq, Ord)
+
+data Rescue a = Rescue (NonEmpty (TH a)) (Maybe (Always a))
+  deriving (Generic, Show, Eq, Ord)
+
+newtype Always a = Always (NonEmpty (TH a))
+  deriving (Generic, Show, Eq, Ord)
+
+-- data Task
+--     = AtomicTask AttributeSet ModDecl
+--     | TaskContainingABlock AttributeSet BlockTask
+--     deriving (Generic, Show, Eq, Ord)
+
+-- data Handler
+--     = AtomicHandler AttributeSet ModDecl
+--     | HandlerContainingABlock AttributeSet BlockHandler
+--     deriving (Generic, Show, Eq, Ord)
     
 -- class IsTaskOrHandler a
 -- instance IsTaskOrHandler Task
@@ -246,17 +286,17 @@ data ModDecl
 --         BLOCK, RESCUE AND ALWAYS
 --
 -------------------------------------------
-data BlockTask = BlockTask (NonEmpty Task) (Maybe RescueTask)
-  deriving (Generic, Show, Eq, Ord)
-data RescueTask = RescueTask (NonEmpty Task) (Maybe AlwaysTask)
-  deriving (Generic, Show, Eq, Ord)
-newtype AlwaysTask = AlwaysTask (NonEmpty Task)
-    deriving (Generic, Show, Eq, Ord)
+-- data BlockTask = BlockTask (NonEmpty Task) (Maybe RescueTask)
+--   deriving (Generic, Show, Eq, Ord)
+-- data RescueTask = RescueTask (NonEmpty Task) (Maybe AlwaysTask)
+--   deriving (Generic, Show, Eq, Ord)
+-- newtype AlwaysTask = AlwaysTask (NonEmpty Task)
+--     deriving (Generic, Show, Eq, Ord)
 
 
-data BlockHandler = BlockHandler (NonEmpty Handler) (Maybe RescueHandler)
-  deriving (Generic, Show, Eq, Ord)
-data RescueHandler = RescueHandler (NonEmpty Handler) (Maybe AlwaysHandler)
-  deriving (Generic, Show, Eq, Ord)
-newtype AlwaysHandler = AlwaysHandler (NonEmpty Handler)
-  deriving (Generic, Show, Eq, Ord)
+-- data BlockHandler = BlockHandler (NonEmpty Handler) (Maybe RescueHandler)
+--   deriving (Generic, Show, Eq, Ord)
+-- data RescueHandler = RescueHandler (NonEmpty Handler) (Maybe AlwaysHandler)
+--   deriving (Generic, Show, Eq, Ord)
+-- newtype AlwaysHandler = AlwaysHandler (NonEmpty Handler)
+--   deriving (Generic, Show, Eq, Ord)

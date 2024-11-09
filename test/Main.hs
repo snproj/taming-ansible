@@ -10,13 +10,14 @@ import Semantics.StaticVarResolver
 import Debug.Trace (trace, traceShow)
 import Control.Monad.Reader (runReader)
 import Data.Map (fromList, Map)
-import Semantics.Desugar
+import Semantics.Desugar.DesugarLoops
+import Semantics.Desugar.DesugarRoles
 import Data.List.NonEmpty (head)
 
 testYaml :: IO ()
 testYaml = do
     json <- B.readFile "/home/sunrise/research/test2.json"
-    let res = eitherDecode json :: Either String Task
+    let res = eitherDecode json :: Either String (TH TaskMarker)
     case res of
         Left s -> print s
         Right t -> print t
@@ -25,10 +26,10 @@ testYaml = do
 testSVR :: IO ()
 testSVR = do
     json <- B.readFile "/home/sunrise/research/testSVR.json"
-    let res = eitherDecode json :: Either String Task
+    let res = eitherDecode json :: Either String (TH TaskMarker)
     let res' = case res of
             Left s -> error ""
-            Right t -> runReader (resolveTask t) (SymbolTable (fromList [
+            Right t -> runReader (resolveTH t) (SymbolTable (fromList [
                 ("var1", SimpleVarString "resolved1"),
                 ("var2", SimpleVarString "resolved2"),
                 ("var3", SimpleVarString "resolved3")
@@ -52,15 +53,16 @@ testDSPlainRole = do
 testUnrollLoopForGenericMod :: IO ()
 testUnrollLoopForGenericMod = do
     json <- B.readFile "/home/sunrise/research/taskGenericModDeclWithLoop.json"
-    let res = eitherDecode json :: Either String Task
+    let res = eitherDecode json :: Either String (TH TaskMarker)
     let res' = case res of
             Left s -> error "ERROR: Some error during parsing the task!"
             Right t -> case t of
-                (AtomicTask attSet modDecl) -> let
+                (Atomic attSet modDecl) -> let
                     _kwLoop = case kwLoop attSet of
                         Nothing -> error ""
                         Just _kwLoop' -> _kwLoop'
-                    in unrollLoop _kwLoop modDecl
+                    basic = unrollLoopBasic _kwLoop modDecl
+                    in runReader (resolveUnrolledModDeclWithLoopVar basic) _kwLoop
                 _ -> error ""
     print res'
     return ()
@@ -89,5 +91,10 @@ main = do
     -- print "what"
     -- let s = traceShow "fucky boi" "l"
     -- print s
-    testUnrollLoopForGenericMod
+    testParseRoot
+    -- testDirStacker
+    -- testDSPlainRole
+    -- testSVR
+    -- testYaml
+    -- testUnrollLoopForGenericMod
     return ()

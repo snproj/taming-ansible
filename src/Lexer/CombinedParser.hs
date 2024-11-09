@@ -3,7 +3,7 @@
 module Lexer.CombinedParser (parseRootDir) where
 import Lexer.DirectoryStacker (AnsibleDir (..), AnsibleYAMLFile (..), AnsibleFSThing (..))
 import Lexer.YAMLConverter ()
-import GrammarTypes.AnsibleGrammarTypes (RootDir (..), Role (..), Task, Handler, Playbook, Play, CompulsoryRoleDir (..), RoleSubDirFileName (..))
+import GrammarTypes.AnsibleGrammarTypes --(RootDir (..), Role (..), Playbook, Play, CompulsoryRoleDir (..), RoleSubDirFileName (..))
 import qualified Data.Map as Map
 import Data.Aeson.Types (fromJSON, Result, Parser, Value (..))
 import Data.Aeson (eitherDecode, decode)
@@ -79,12 +79,12 @@ stringToRSDFN s = case s of
     -- "main.yaml" -> MainName
     _ -> OtherName s
 
-parseTaskListFromAFile :: AnsibleYAMLFile -> [Task]
-parseTaskListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [Task] of
+parseTaskListFromAFile :: AnsibleYAMLFile -> [TH TaskMarker]
+parseTaskListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [TH TaskMarker] of
         Left s -> error s
         Right taskList -> taskList
 
-parseHandlerListFromAFile :: AnsibleYAMLFile -> [Handler]
-parseHandlerListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [Handler] of
+parseHandlerListFromAFile :: AnsibleYAMLFile -> [TH HandlerMarker]
+parseHandlerListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [TH HandlerMarker] of
         Left s -> error s
         Right handlerList -> handlerList

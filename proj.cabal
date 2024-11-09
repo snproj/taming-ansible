@@ -63,7 +63,8 @@ library
                       Lexer.YAMLConverter,
                       Lexer.CombinedParser,
                       GrammarTypes.AnsibleGrammarTypes,
-                      Semantics.Desugar,
+                      Semantics.Desugar.DesugarRoles,
+                      Semantics.Desugar.DesugarLoops,
                       Semantics.StaticVarResolver
 
     -- Modules included in this library but not exported.
@@ -86,7 +87,8 @@ library
                       regex-tdfa,
                       scientific,
                       mtl,
-                      transformers
+                      transformers,
+                      parsec ^>= 3.1.17.0
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -156,4 +158,5 @@ test-suite taming-ansible-test
         regex-tdfa,
         scientific,
         mtl,
-        transformers
+        transformers,
+        parsec ^>= 3.1.17.0

@@ -17,13 +17,15 @@ import Data.Aeson.KeyMap (toList, lookup, filterWithKey, toList, keys, union, in
 import Data.List ((\\))
 import qualified Data.Vector as V
 import qualified Data.Set as Set
-import GrammarTypes.AnsibleGrammarTypes (AlwaysHandler (..), AlwaysTask (..), AttributeSet (..), BlockHandler (..), BlockTask (..), Handler (..), JinjaElem (..), KWLoop (..), ModDecl (..), RescueHandler (..), RescueTask (..), Task (..), Var (..), Play (..), HostPattern (HostSet), Role, CompulsoryRoleDir, RoleSubDirFileName, Playbook (PlaybookDefinedHere))
+import GrammarTypes.AnsibleGrammarTypes
 import Data.List.NonEmpty (NonEmpty (..), nonEmpty, singleton)
 import Control.Applicative ((<|>))
 import Text.Regex.TDFA ((=~), AllTextMatches (..))
 import qualified Data.Maybe
 import Debug.Trace (traceShow)
 import Data.Scientific (toRealFloat, toBoundedInteger, isInteger)
+import Data.Maybe (fromMaybe)
+-- import Text.Parsec
 -- import Text.Regex.Posix
 
 instance FromJSON Playbook where
@@ -38,8 +40,8 @@ instance FromJSON Playbook where
 instance FromJSON Play where
     parseJSON = withObject "Play" (\obj -> do
         _hostPattern <- obj .: fromString "hosts" :: Parser HostPattern
-        _tasks <- obj .:? fromString "tasks" :: Parser (Maybe [Task])
-        _handlers <- obj.:? fromString "handlers" :: Parser (Maybe [Handler])
+        _tasks <- obj .:? fromString "tasks" :: Parser (Maybe [TH TaskMarker])
+        _handlers <- obj.:? fromString "handlers" :: Parser (Maybe [TH HandlerMarker])
         _roleNames <- obj.:? fromString "roles" :: Parser (Maybe [String])
         (_attSet, _) <- getRemaining obj
         let res = Play {
@@ -72,7 +74,7 @@ instance FromJSON HostPattern where
 --         _roles <- obj.:? fromString "roles" :: Parser (Maybe [Role])
 --         undefined
 --         )
-
+-- jjParseBool :: String -> Parser
 
 jjParse :: String -> [JinjaElem] -- TODO: actually parse JinjaElem
 jjParse x = let
@@ -82,7 +84,9 @@ jjParse x = let
             hasFirstTwoBraces = take 2 s == "{{"
             hasLastTwoBraces = take 2 (reverse s) == "}}"
             in if hasFirstTwoBraces && hasLastTwoBraces
-                then Just (UnresolvedVarRef (take (length s - 4) (drop 2 s))) -- remove first and last 2 chars
+                then let
+                    jjContents = take (length s - 4) (drop 2 s) -- remove first and last 2 chars
+                    in Just (UnresolvedVarRef jjContents)
                 else Just (JustString s)
         | not (null s) = Just (JustString s)
         | otherwise = Nothing
@@ -135,9 +139,9 @@ getRemaining obj = do
     let leftoverKeywords = keys obj \\ attSetKeyListGLOBAL
     return (_attSet, leftoverKeywords)
 
-instance FromJSON Task where
-    parseJSON :: Value -> Parser Task
-    parseJSON = withObject "Task" (\obj -> do
+instance FromJSON (TH a) where
+    parseJSON :: Value -> Parser (TH a)
+    parseJSON = withObject "TH" (\obj -> do
         (_attSet, leftoverKeywords) <- getRemaining obj
 
         -- let _attSetKM = filterWithKey (\k _ -> k `elem` attSetKeyListGLOBAL) obj
@@ -150,12 +154,12 @@ instance FromJSON Task where
 
         let res = case toString modNameOrBlockKW of
                 "block" -> do
-                    _block <- obj .: modNameOrBlockKW :: Parser BlockTask
-                    return (TaskContainingABlock _attSet _block)
+                    _block <- obj .: modNameOrBlockKW :: Parser (Block a)
+                    return (ContainingBlock _attSet _block)
                 _ -> do
                     _mod <- obj .: modNameOrBlockKW :: Parser (Map String Var)
                     let _modDecl = getModDeclVariant (toString modNameOrBlockKW) _mod
-                    return (AtomicTask _attSet _modDecl)
+                    return (Atomic _attSet _modDecl)
         res
         )
 -- requiredDefaultOptionalMSV :: [String] -> Map String Var -> [String] -> Map String Var -> Maybe (Map String Var)
@@ -201,23 +205,23 @@ getModDeclVariant s msv = case s of
             in IncludeRole {name=_name,tasks_from=_tasks_from,handlers_from=_handlers_from,apply=_apply}
         _ -> GenericModDecl s msv
 
-instance FromJSON Handler where
-    parseJSON = withObject "Handler" ( \obj -> do
-        (_attSet, leftoverKeywords) <- getRemaining obj
+-- instance FromJSON Handler where
+--     parseJSON = withObject "Handler" ( \obj -> do
+--         (_attSet, leftoverKeywords) <- getRemaining obj
 
-        let modNameOrBlockKW = case leftoverKeywords of
-                [x] -> x
-                _ -> error "ERROR: After parsing AttributeSet, there was more than one item left. There should be only one, namely the ModDecl"
-        let res = case toString modNameOrBlockKW of
-                "block" -> do
-                    _block <- obj .: modNameOrBlockKW :: Parser BlockHandler
-                    return (HandlerContainingABlock _attSet _block)
-                _ -> do
-                    _mod <- obj .: modNameOrBlockKW :: Parser (Map String Var)
-                    let _modDecl = getModDeclVariant (toString modNameOrBlockKW) _mod
-                    return (AtomicHandler _attSet _modDecl)
-        res
-        )
+--         let modNameOrBlockKW = case leftoverKeywords of
+--                 [x] -> x
+--                 _ -> error "ERROR: After parsing AttributeSet, there was more than one item left. There should be only one, namely the ModDecl"
+--         let res = case toString modNameOrBlockKW of
+--                 "block" -> do
+--                     _block <- obj .: modNameOrBlockKW :: Parser BlockHandler
+--                     return (HandlerContainingABlock _attSet _block)
+--                 _ -> do
+--                     _mod <- obj .: modNameOrBlockKW :: Parser (Map String Var)
+--                     let _modDecl = getModDeclVariant (toString modNameOrBlockKW) _mod
+--                     return (AtomicHandler _attSet _modDecl)
+--         res
+--         )
 
 
 attSetKeyListGLOBAL :: [Key]
@@ -226,29 +230,35 @@ defaultRetriesNumber :: Var
 defaultRetriesNumber = SimpleVarInt 3
 defaultLoopString :: Var
 defaultLoopString = SimpleVarString "item"
+defaultWhen :: Var
+defaultWhen = SimpleVarBool True
+defaultIgnoreErrors :: Var
+defaultIgnoreErrors = SimpleVarBool False
 
 
-orDefault :: Maybe a -> a -> Maybe a
-orDefault maybeThing defaultThing = case maybeThing of
-    Just thing -> Just thing
-    Nothing -> Just defaultThing
+-- orDefault :: Maybe a -> a -> Maybe a
+-- orDefault maybeThing defaultThing = case maybeThing of
+--     Just thing -> Just thing
+--     Nothing -> Just defaultThing
 
 instance FromJSON KWLoop where
     parseJSON = withObject "KWLoop" (\obj -> do
         _loopList <- obj .: fromString "loop"
-        _loopVarByUser <- obj .:? fromString "loop_var"
+        _loopVar <- obj .:? fromString "loop_var"
         _indexVar <- obj .:? fromString "index_var"
         _pause <- obj .:? fromString "pause"
 
-        let _loopVar = Data.Maybe.fromMaybe defaultLoopString _loopVarByUser
+        -- let _loopVar = fromMaybe defaultLoopString _loopVarByUser
 
         return (KWLoop {
             loopList=_loopList,
-            loopVar=_loopVar,
+            loopVar=fromMaybe defaultLoopString _loopVar,
             indexVar=_indexVar,
             pause=_pause
         })
         )
+
+
 
 instance FromJSON AttributeSet where
     parseJSON = withObject "AttributeSet" (\obj -> do
@@ -262,6 +272,7 @@ instance FromJSON AttributeSet where
         _kwUntil <- obj .:? fromString "until"
         _kwRetries <- obj .:? fromString "retries"
         _kwRegister <- obj .:? fromString "register"
+        _kwIgnoreErrors <- obj .:? fromString "ignore_errors"
 
         -- Now the parts that we have to piece together ourselves
         _rawLoopSection <- obj .:? fromString "loop" :: Parser (Maybe Array)
@@ -291,76 +302,77 @@ instance FromJSON AttributeSet where
             kwForceHandlers = _kwForceHandlers,
             kwNotify = _kwNotify,
             kwLoop = _kwLoop,
-            kwWhen = _kwWhen,
+            kwWhen = fromMaybe defaultWhen _kwWhen,
             kwVars = _kwVars,
             kwChangedWhen = _kwChangedWhen,
             kwFailedWhen = _kwFailedWhen,
             kwUntil = _kwUntil,
-            kwRetries = _kwRetries `orDefault` defaultRetriesNumber,
-            kwRegister = _kwRegister
+            kwRetries = fromMaybe defaultRetriesNumber _kwRetries,
+            kwRegister = _kwRegister,
+            kwIgnoreErrors = fromMaybe defaultIgnoreErrors _kwIgnoreErrors
             })
         )
 
 
-instance FromJSON BlockTask where
-    parseJSON = withArray "BlockTask" (\arr -> do
-        parsed <- mapM parseJSON (V.toList arr) :: Parser [Task]
+instance FromJSON (Block a) where
+    parseJSON = withArray "Block" (\arr -> do
+        parsed <- mapM parseJSON (V.toList arr) :: Parser [TH a]
         let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: BlockTask contains no tasks!"
+                Nothing -> error "ERROR: Block contains no tasks/handlers!"
                 Just ls -> ls
-        return (BlockTask thList Nothing) -- separate function for adding Rescue, since it's the item containing Block that is in charge of checking that
+        return (Block thList Nothing) -- separate function for adding Rescue, since it's the item containing Block that is in charge of checking that
         )
 
-instance FromJSON RescueTask where
+instance FromJSON (Rescue a) where
     parseJSON = withArray "Rescue" (\arr -> do
-        parsed <- mapM parseJSON (V.toList arr) :: Parser [Task]
+        parsed <- mapM parseJSON (V.toList arr) :: Parser [TH a]
         let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: RescueTask contains no tasks!"
+                Nothing -> error "ERROR: Rescue contains no tasks/handlers!"
                 Just ls -> ls
-        return (RescueTask thList Nothing) -- separate function for adding Always, since it's the item containing Block that is in charge of checking that
+        return (Rescue thList Nothing) -- separate function for adding Always, since it's the item containing Block that is in charge of checking that
         )
-instance FromJSON AlwaysTask where
+instance FromJSON (Always a) where
     parseJSON = withArray "Always" (\arr -> do
-        parsed <- mapM parseJSON (V.toList arr) :: Parser [Task]
+        parsed <- mapM parseJSON (V.toList arr) :: Parser [TH a]
         let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: AlwaysTask contains no tasks!"
+                Nothing -> error "ERROR: Always contains no tasks/handlers!"
                 Just ls -> ls
-        return (AlwaysTask thList)
+        return (Always thList)
         )
-instance FromJSON BlockHandler where
-  parseJSON =
-    withArray
-      "BlockHandler"
-      ( \arr -> do
-          parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
-          let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: BlockHandler contains no handlers!"
-                Just ls -> ls
-          return (BlockHandler thList Nothing) -- separate function for adding Rescue, since it's the item containing Block that is in charge of checking that
-      )
+-- instance FromJSON BlockHandler where
+--   parseJSON =
+--     withArray
+--       "BlockHandler"
+--       ( \arr -> do
+--           parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
+--           let thList = case nonEmpty parsed of
+--                 Nothing -> error "ERROR: BlockHandler contains no handlers!"
+--                 Just ls -> ls
+--           return (BlockHandler thList Nothing) -- separate function for adding Rescue, since it's the item containing Block that is in charge of checking that
+--       )
 
-instance FromJSON RescueHandler where
-  parseJSON =
-    withArray
-      "RescueHandler"
-      ( \arr -> do
-          parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
-          let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: RescueHandler contains no handlers!"
-                Just ls -> ls
-          return (RescueHandler thList Nothing) -- separate function for adding Always, since it's the item containing Block that is in charge of checking that
-      )
+-- instance FromJSON RescueHandler where
+--   parseJSON =
+--     withArray
+--       "RescueHandler"
+--       ( \arr -> do
+--           parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
+--           let thList = case nonEmpty parsed of
+--                 Nothing -> error "ERROR: RescueHandler contains no handlers!"
+--                 Just ls -> ls
+--           return (RescueHandler thList Nothing) -- separate function for adding Always, since it's the item containing Block that is in charge of checking that
+--       )
 
-instance FromJSON AlwaysHandler where
-  parseJSON =
-    withArray
-      "AlwaysHandler"
-      ( \arr -> do
-          parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
-          let thList = case nonEmpty parsed of
-                Nothing -> error "ERROR: AlwaysHandler contains no handlers!"
-                Just ls -> ls
-          return (AlwaysHandler thList)
-      )
+-- instance FromJSON AlwaysHandler where
+--   parseJSON =
+--     withArray
+--       "AlwaysHandler"
+--       ( \arr -> do
+--           parsed <- mapM parseJSON (V.toList arr) :: Parser [Handler]
+--           let thList = case nonEmpty parsed of
+--                 Nothing -> error "ERROR: AlwaysHandler contains no handlers!"
+--                 Just ls -> ls
+--           return (AlwaysHandler thList)
+--       )
 
 
