@@ -13,6 +13,8 @@ import Data.Map (fromList, Map)
 import Semantics.Desugar.DesugarLoops
 import Semantics.Desugar.DesugarRoles
 import Data.List.NonEmpty (head)
+import qualified Text.Regex.TDFA.CorePattern as Data.List
+import Semantics.Desugar.DesugarImports (desugarImportsInPlay)
 
 testYaml :: IO ()
 testYaml = do
@@ -41,13 +43,16 @@ testDSPlainRole :: IO ()
 testDSPlainRole = do
     (name, dir) <- gatherDir "/home/sunrise/research/testansibleproj"
     let root = parseRootDir "play" dir
-    let (p, mmsr) = getPBMMSR root
+    -- let (p, mmsr) = getPBMMSR root
+    let (PlaybookDefinedHere nep) = playbook root
+    let p = Data.List.NonEmpty.head nep
+    let mmsr = roledir root
     let res = runReader (desugarPlainRoleCalls p) mmsr
     print res
     return ()
-        where
-            getPBMMSR :: RootDir -> (Play, Maybe (Map String Role))
-            getPBMMSR (RootDir (PlaybookDefinedHere nePlay) mmsr) = (Data.List.NonEmpty.head nePlay, mmsr)
+        -- where
+        --     getPBMMSR :: RootDir -> (Play, Maybe (Map String Role))
+        --     getPBMMSR (RootDir (PlaybookDefinedHere nePlay) mmsr) = (Data.List.NonEmpty.head nePlay, mmsr)
 
 
 testUnrollLoopForGenericMod :: IO ()
@@ -84,7 +89,17 @@ testParseRoot = do
     print root
     return ()
 
-
+testDesugarImports :: IO ()
+testDesugarImports = do
+    (name, dir) <- gatherDir "/home/sunrise/research/testansibleproj"
+    print name
+    print dir
+    let root = parseRootDir "play" dir
+    let (PlaybookDefinedHere nep) = playbook root
+    let play = Data.List.NonEmpty.head nep
+    let res = runReader (desugarImportsInPlay play) (root, AttributeSet{})
+    print res
+    return ()
 
 main :: IO ()
 main = do
@@ -92,9 +107,10 @@ main = do
     -- let s = traceShow "fucky boi" "l"
     -- print s
     testParseRoot
-    -- testDirStacker
-    -- testDSPlainRole
-    -- testSVR
-    -- testYaml
-    -- testUnrollLoopForGenericMod
+    testDirStacker
+    testDSPlainRole
+    testSVR
+    testYaml
+    testUnrollLoopForGenericMod
+    testDesugarImports
     return ()

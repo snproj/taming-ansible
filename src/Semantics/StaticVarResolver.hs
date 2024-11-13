@@ -146,22 +146,29 @@ resolveAttributeSet (AttributeSet
 --     mRescueHandler' <- traverse resolveRescueHandler mRescueHandler
 --     return (BlockHandler neHandler' mRescueHandler')
 
-resolveAlwaysTask :: Always a -> Reader SymbolTable (Always a)
-resolveAlwaysTask (Always neTask) = do
-    neTask' <- traverse resolveTH neTask
-    return (Always neTask')
+-- resolveAlwaysTask :: Always a -> Reader SymbolTable (Always a)
+-- resolveAlwaysTask (Always neTask) = do
+--     neTask' <- traverse resolveTH neTask
+--     return (Always neTask')
 
-resolveRescueTask :: Rescue a -> Reader SymbolTable (Rescue a)
-resolveRescueTask (Rescue neTask mAlwaysTask) = do
-    neTask' <- traverse resolveTH neTask
-    mAlwaysTask' <- traverse resolveAlwaysTask mAlwaysTask
-    return (Rescue neTask' mAlwaysTask')
+-- resolveRescueTask :: Rescue a -> Reader SymbolTable (Rescue a)
+-- resolveRescueTask (Rescue neTask mAlwaysTask) = do
+--     neTask' <- traverse resolveTH neTask
+--     mAlwaysTask' <- traverse resolveAlwaysTask mAlwaysTask
+--     return (Rescue neTask' mAlwaysTask')
+
+-- resolveBlockTask :: Block a -> Reader SymbolTable (Block a)
+-- resolveBlockTask (Block neTask mRescueTask) = do
+--     neTask' <- traverse resolveTH neTask
+--     mRescueTask' <- traverse resolveRescueTask mRescueTask
+--     return (Block neTask' mRescueTask')
 
 resolveBlockTask :: Block a -> Reader SymbolTable (Block a)
-resolveBlockTask (Block neTask mRescueTask) = do
-    neTask' <- traverse resolveTH neTask
-    mRescueTask' <- traverse resolveRescueTask mRescueTask
-    return (Block neTask' mRescueTask')
+resolveBlockTask (Block _blockMain _rescue _always) = do
+    _blockMain' <- traverse resolveTH _blockMain
+    _rescue' <- traverse (traverse resolveTH) _rescue
+    _always' <- traverse (traverse resolveTH) _always
+    return (Block _blockMain' _rescue' _always')
 
 resolveTH :: TH a -> Reader SymbolTable (TH a)
 resolveTH (Atomic attSet modDecl) = do

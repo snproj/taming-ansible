@@ -3,7 +3,6 @@ module Semantics.Desugar.DesugarBlocks where
 import GrammarTypes.AnsibleGrammarTypes
 import Data.List.NonEmpty (toList)
 
-desugarBlocks :: Block a -> [TH a]
-desugarBlocks (Block neTH mRescue) = let
-    thList = toList neTH
-    in undefined
+-- desugarTaskForUseWithBlocks :: TH TaskMarker -> Reader (TH TaskMarker, TH TaskMarker) [TH TaskMarker]
+-- desugarTaskForUseWithBlocks (ContainingBlock attSet (Block _blockMain _rescue _always)) = let
+    

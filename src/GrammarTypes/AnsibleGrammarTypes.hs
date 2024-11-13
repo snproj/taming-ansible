@@ -9,7 +9,7 @@ module GrammarTypes.AnsibleGrammarTypes
         Play(..),
         HostPattern(..),
         Role(..),
-        CompulsoryRoleDir(..),
+        -- CompulsoryRoleDir(..),
         -- TasksFile(..),
         -- HandlersFile(..),
         RoleSubDirFileName(..),
@@ -32,8 +32,8 @@ module GrammarTypes.AnsibleGrammarTypes
         -- Marker(..),
         TH(..),
         Block(..),
-        Rescue(..),
-        Always(..),
+        -- Rescue(..),
+        -- Always(..),
         ModDecl(..),
         TaskMarker(..),
         HandlerMarker(..),
@@ -71,8 +71,17 @@ data NonEmptySet a = NonEmptySet a (Set a)
 --         PLAY AND PLAYBOOK
 --
 -------------------------------------------
-data RootDir = RootDir Playbook (Maybe (Map String Role))
-    deriving (Generic, Show, Eq, Ord)
+data RootDir = RootDir {
+    playbook :: Playbook,
+    roledir :: Maybe (Map String Role),
+    looseTaskFiles :: Maybe (Map String [TH TaskMarker]) -- all loose files assumed to be tasks
+} deriving (Generic, Show, Eq, Ord)
+
+-- data RoleDir = RoleDir (Maybe (Map String Role))
+
+-- data LooseTaskFiles = LooseTaskFiles (Maybe (Map String [TH TaskMarker]))
+
+-- data LooseHandlerFiles = LooseHandlerFiles (Maybe (Map String [TH HandlerMarker]))
 
 data Playbook = PlaybookDefinedHere (NonEmpty Play)
     deriving (Generic, Show, Eq, Ord)
@@ -102,8 +111,10 @@ data HostPattern = UnionHosts HostPattern HostPattern
 --
 -------------------------------------------
 -- TODO: Does not prevent multiple of the same directory! Find equivalent to Data.Set.NonEmpty!
-newtype Role = Role (NonEmpty CompulsoryRoleDir)
-    deriving (Generic, Show, Eq, Ord)
+data Role = Role {
+    tasksDir :: Maybe (Map RoleSubDirFileName [TH TaskMarker]),
+    handlersDir :: Maybe (Map RoleSubDirFileName [TH HandlerMarker])
+} deriving (Generic, Show, Eq, Ord)
 
 -- data SumCompulsoryRoleDir where
 --     SumCompulsoryRoleDir :: CompulsoryRoleDir a -> SumCompulsoryRoleDir
@@ -112,10 +123,10 @@ newtype Role = Role (NonEmpty CompulsoryRoleDir)
 -- data CompulsoryRoleDir a = CompulsoryRoleDir (Map RoleSubDirFileName [TH a])
 --     deriving (Generic, Show, Eq, Ord)
 
-data CompulsoryRoleDir
-    = TasksDir (Map RoleSubDirFileName [TH TaskMarker])
-    | HandlersDir (Map RoleSubDirFileName [TH HandlerMarker])
-    deriving (Generic, Show, Eq, Ord)
+-- data CompulsoryRoleDir = CompulsoryRoleDir {
+--     tasksDir :: Maybe (Map RoleSubDirFileName [TH TaskMarker]),
+--     handlersDir :: Maybe (Map RoleSubDirFileName [TH HandlerMarker])
+-- } deriving (Generic, Show, Eq, Ord)
 
 data RoleSubDirFileName = MainName
     | OtherName String
@@ -187,7 +198,11 @@ data AttributeSet = AttributeSet {
     kwRetries :: Var,
     kwRegister :: Maybe String,
     kwIgnoreErrors :: Var
-} deriving (Generic, Show, Eq, Ord)
+} deriving (Generic, Eq, Ord)
+
+instance Show AttributeSet where
+    show :: AttributeSet -> String
+    show _ = "<ATTSET>"
 
 
 data KWLoop = KWLoop {
@@ -229,14 +244,20 @@ data TH a
     | ContainingBlock AttributeSet (Block a)
     deriving (Generic, Show, Eq, Ord)
 
-data Block a = Block (NonEmpty (TH a)) (Maybe (Rescue a))
-  deriving (Generic, Show, Eq, Ord)
+data Block a = Block {
+    blockMain :: NonEmpty (TH a),
+    rescue :: Maybe (NonEmpty (TH a)),
+    always :: Maybe (NonEmpty (TH a))
+} deriving (Generic, Show, Eq, Ord)
 
-data Rescue a = Rescue (NonEmpty (TH a)) (Maybe (Always a))
-  deriving (Generic, Show, Eq, Ord)
+-- data Block a = Block (NonEmpty (TH a)) (Maybe (Rescue a))
+--   deriving (Generic, Show, Eq, Ord)
 
-newtype Always a = Always (NonEmpty (TH a))
-  deriving (Generic, Show, Eq, Ord)
+-- data Rescue a = Rescue (NonEmpty (TH a)) (Maybe (Always a))
+--   deriving (Generic, Show, Eq, Ord)
+
+-- newtype Always a = Always (NonEmpty (TH a))
+--   deriving (Generic, Show, Eq, Ord)
 
 -- data Task
 --     = AtomicTask AttributeSet ModDecl

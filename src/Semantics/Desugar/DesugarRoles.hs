@@ -7,6 +7,7 @@ import Control.Monad.Reader (Reader, ask, MonadTrans (lift))
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust)
 import Data.List.NonEmpty (filter)
+import qualified Data.Map as Map
 
 
 desugarPlainRoleCalls :: Play -> Reader (Maybe (Map String Role)) Play
@@ -36,31 +37,32 @@ desugarPlainRoleCalls (Play hp attSet ts hs rNames) = do
 
 
 getMainTasksFromRole :: Role -> Maybe [TH TaskMarker]
-getMainTasksFromRole (Role neCRD) = do
-    let justTaskDirs = Data.List.NonEmpty.filter (\case {TasksDir _ -> True; _ -> False}) neCRD
-    taskDir <- case justTaskDirs of
-        [td] -> Just td
-        [] -> Nothing
-        _ -> error ""
-    getTaskFileFromTaskDir taskDir MainName
+getMainTasksFromRole r = do
+    _tasksDir <- tasksDir r
+    Map.lookup MainName _tasksDir
 
 
-getTaskFileFromTaskDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH TaskMarker]
-getTaskFileFromTaskDir (TasksDir mnt) n =  Data.Map.lookup n mnt
-getTaskFileFromTaskDir _ _ = error "ERROR: Tried to get task file from non-task dir"
+-- getTaskFileFromTaskDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH TaskMarker]
+-- getTaskFileFromTaskDir (TasksDir mnt) n =  Data.Map.lookup n mnt
+-- getTaskFileFromTaskDir _ _ = error "ERROR: Tried to get task file from non-task dir"
+
+-- getMainHandlersFromRole :: Role -> Maybe [TH HandlerMarker]
+-- getMainHandlersFromRole (Role neCRD) = do
+--   let justHandlerDirs = Data.List.NonEmpty.filter (\case HandlersDir _ -> True; _ -> False) neCRD
+--   handlerDir <- case justHandlerDirs of
+--     [td] -> Just td
+--     [] -> Nothing
+--     _ -> error ""
+--   getHandlerFileFromHandlerDir handlerDir MainName
 
 getMainHandlersFromRole :: Role -> Maybe [TH HandlerMarker]
-getMainHandlersFromRole (Role neCRD) = do
-  let justHandlerDirs = Data.List.NonEmpty.filter (\case HandlersDir _ -> True; _ -> False) neCRD
-  handlerDir <- case justHandlerDirs of
-    [td] -> Just td
-    [] -> Nothing
-    _ -> error ""
-  getHandlerFileFromHandlerDir handlerDir MainName
+getMainHandlersFromRole r = do
+    _handlersDir <- handlersDir r
+    Map.lookup MainName _handlersDir
 
-getHandlerFileFromHandlerDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH HandlerMarker]
-getHandlerFileFromHandlerDir (HandlersDir mnt) n = Data.Map.lookup n mnt
-getHandlerFileFromHandlerDir _ _ = error "ERROR: Tried to get handler file from non-handler dir"
+-- getHandlerFileFromHandlerDir :: CompulsoryRoleDir -> RoleSubDirFileName -> Maybe [TH HandlerMarker]
+-- getHandlerFileFromHandlerDir (HandlersDir mnt) n = Data.Map.lookup n mnt
+-- getHandlerFileFromHandlerDir _ _ = error "ERROR: Tried to get handler file from non-handler dir"
 
 
 

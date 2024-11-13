@@ -65,6 +65,9 @@ library
                       GrammarTypes.AnsibleGrammarTypes,
                       Semantics.Desugar.DesugarRoles,
                       Semantics.Desugar.DesugarLoops,
+                      Semantics.Desugar.DesugarHandlers,
+                      Semantics.Desugar.DesugarBlocks,
+                      Semantics.Desugar.DesugarImports,
                       Semantics.StaticVarResolver
 
     -- Modules included in this library but not exported.

@@ -1,5 +1,6 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 {-# HLINT ignore "Use lambda-case" #-}
+{-# LANGUAGE LambdaCase #-}
 module Lexer.CombinedParser (parseRootDir) where
 import Lexer.DirectoryStacker (AnsibleDir (..), AnsibleYAMLFile (..), AnsibleFSThing (..))
 import Lexer.YAMLConverter ()
@@ -11,6 +12,7 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.List.NonEmpty (nonEmpty, singleton, NonEmpty (..))
 -- import qualified Data.Text
 import Debug.Trace (trace, traceShow)
+import Data.Map (Map)
 
 parseRootDir :: String -> AnsibleDir -> RootDir
 parseRootDir pbName (AnsibleDir mst) = let
@@ -22,10 +24,10 @@ parseRootDir pbName (AnsibleDir mst) = let
     pb = case eitherDecode (pack pbString) :: Either String Playbook of
             Left err -> error err
             Right pb' -> pb'
-    _ = traceShow pb
+    -- _ = traceShow pb
     roleDir = do
         res <- Map.lookup "roles" mst
-        case traceShow "fucklala" res of
+        case res of
           AFile _ -> error "ERROR: Role directory is actually a file!"
           ADir (AnsibleDir mst') -> return mst'
     -- roleDirOnlyDirs = do
@@ -35,43 +37,74 @@ parseRootDir pbName (AnsibleDir mst) = let
             ADir adir -> Just (parseRoleFromADir adir)
             _ -> Nothing) <$> roleDir
     roles' = fmap (Map.mapMaybe id) roles
-    in traceShow mst (RootDir pb roles')
+    _looseTaskFiles = do
+        let onlyFiles = Map.filter (\case {ADir _ -> False; AFile _ -> True}) mst
+        let withoutPB = Map.filterWithKey (\k _ -> k /= pbName) onlyFiles -- do not read the playbook file as a loose task file!
+        let convToAYF = Map.map (\(AFile a) -> a) withoutPB
+        return (Map.map parseTaskListFromAFile convToAYF) :: Maybe (Map String [TH TaskMarker])
+    in RootDir {
+        playbook=pb,
+        roledir=roles',
+        looseTaskFiles=_looseTaskFiles   
+        }
 
 parseRoleFromADir :: AnsibleDir -> Role
 parseRoleFromADir (AnsibleDir mst) = let
     taskDir = Map.lookup "tasks" mst
     taskCRD = do
-        parseCRDFromADir "tasks" <$> taskDir
+        parseTasksDir <$> taskDir
 
     handlerDir = Map.lookup "handlers" mst
     handlerCRD = do
-        parseCRDFromADir "handlers" <$> handlerDir
+        parseHandlersDir <$> handlerDir
     
-    necrd = case (taskCRD, handlerCRD) of
-        (Nothing, Nothing) -> error "ERROR: Neither a tasks dir nor a handlers dir exists in the role! Must have at least one!"
-        (Just t, Nothing) -> singleton t
-        (Nothing, Just h) -> singleton h
-        (Just t, Just h) -> t :| [h]
-    in Role necrd
+    -- necrd = case (taskCRD, handlerCRD) of
+    --     (Nothing, Nothing) -> error "ERROR: Neither a tasks dir nor a handlers dir exists in the role! Must have at least one!"
+    --     (Just t, Nothing) -> singleton t
+    --     (Nothing, Just h) -> singleton h
+    --     (Just t, Just h) -> t :| [h]
+    in Role {
+        tasksDir=taskCRD,
+        handlersDir=handlerCRD
+    }
 
 
+parseTasksDir :: AnsibleFSThing -> Map RoleSubDirFileName [TH TaskMarker]
+parseTasksDir (ADir (AnsibleDir adir)) = let
+    gotTasks = Map.map (\athing -> case athing of
+        ADir _ -> error ""
+        AFile afile -> parseTaskListFromAFile afile) adir
+    gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
+    in gotRSDFN
 
-parseCRDFromADir :: String -> AnsibleFSThing -> CompulsoryRoleDir
-parseCRDFromADir s (ADir (AnsibleDir adir)) = case s of
-    "tasks" -> let
-        gotTasks = Map.map (\athing -> case athing of
-            ADir _ -> error ""
-            AFile afile -> parseTaskListFromAFile afile) adir
-        gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
-        in TasksDir gotRSDFN
-    "handlers" -> let
-        gotTasks = Map.map (\athing -> case athing of
-            ADir _ -> error ""
-            AFile afile -> parseHandlerListFromAFile afile) adir
-        gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
-        in HandlersDir gotRSDFN
-    _ -> error "ERROR: Subdirectory type of Role not supported!"
-parseCRDFromADir s (AFile _) = error ("ERROR: " ++ s ++ " must be a directory!")
+parseHandlersDir :: AnsibleFSThing -> Map RoleSubDirFileName [TH HandlerMarker]
+parseHandlersDir (ADir (AnsibleDir adir)) =
+  let gotHandlers =
+        Map.map
+          ( \athing -> case athing of
+              ADir _ -> error ""
+              AFile afile -> parseHandlerListFromAFile afile
+          )
+          adir
+      gotRSDFN = Map.mapKeys stringToRSDFN gotHandlers
+   in gotRSDFN
+
+-- parseCRDFromADir :: String -> AnsibleFSThing -> Maybe (Map RoleSubDirFileName [TH TaskMarker])
+-- parseCRDFromADir s (ADir (AnsibleDir adir)) = case s of
+--     "tasks" -> let
+--         gotTasks = Map.map (\athing -> case athing of
+--             ADir _ -> error ""
+--             AFile afile -> parseTaskListFromAFile afile) adir
+--         gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
+--         in gotRSDFN
+--     "handlers" -> let
+--         gotTasks = Map.map (\athing -> case athing of
+--             ADir _ -> error ""
+--             AFile afile -> parseHandlerListFromAFile afile) adir
+--         gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
+--         in HandlersDir gotRSDFN
+--     _ -> error "ERROR: Subdirectory type of Role not supported!"
+-- parseCRDFromADir s (AFile _) = error ("ERROR: " ++ s ++ " must be a directory!")
 
 stringToRSDFN :: String -> RoleSubDirFileName
 stringToRSDFN s = case s of
