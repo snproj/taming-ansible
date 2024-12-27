@@ -1,8 +1,233 @@
+{-# LANGUAGE LambdaCase #-}
 module Semantics.Desugar.DesugarBlocks where
 
 import GrammarTypes.AnsibleGrammarTypes
-import Data.List.NonEmpty (toList)
+import Data.List.NonEmpty (toList, fromList, NonEmpty, map)
+import Control.Monad.Reader (MonadReader(ask), Reader)
+import Text.Regex.TDFA.CorePattern (P(NonEmpty))
+import qualified Text.Regex.TDFA.CorePattern as Data.List
+import Data.Maybe (fromMaybe, fromJust)
+import qualified Data.Map
+import Data.Hashable (hash)
 
--- desugarTaskForUseWithBlocks :: TH TaskMarker -> Reader (TH TaskMarker, TH TaskMarker) [TH TaskMarker]
--- desugarTaskForUseWithBlocks (ContainingBlock attSet (Block _blockMain _rescue _always)) = let
-    
+-- addRegister :: AttributeSet -> AttributeSet
+-- addRegister attSet = let
+--     existingReg = kwRegister attSet
+--     newRed = case existingReg of
+--         Nothing -> generateRegName attSet
+--     in undefined
+--         where
+--             generateRegName :: AttributeSet -> String
+--             generateRegName attSet = let
+--                 res = case kwName attSet of
+--                     Nothing -> hash
+
+getSuccessIndicator :: TH a -> JBE_EXP
+getSuccessIndicator (Atomic attSet _ _) = let
+    reg = fromJust $ kwRegister attSet
+    in JBE_EXP_BINARYOP
+        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_DEFINED)
+        JBE_OP_AND
+        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_SUCCEEDED)
+getSuccessIndicator (ContainingBlock _ block _) = let
+    lastB = getSuccessIndicator $ last $ toList $ blockMain block
+    lastR = (getSuccessIndicator . last . toList <$> rescue block)
+    in case lastR of
+        Just lastR' -> JBE_EXP_BINARYOP lastB JBE_OP_OR lastR'
+        Nothing -> lastB
+
+getFailedIndicator :: TH a -> JBE_EXP
+getFailedIndicator (Atomic attSet _ _) = let
+    reg = fromJust $ kwRegister attSet
+    in JBE_EXP_BINARYOP
+        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_DEFINED)
+        JBE_OP_AND
+        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_FAILED)
+getFailedIndicator (ContainingBlock _ block _) = let
+    in case rescue block of
+        Just rescue' -> getFailedIndicator $ last $ toList rescue'
+        Nothing -> orIndicatorsTogether $ Prelude.map getFailedIndicator $ toList $ blockMain block
+
+-- updateAttributeSet :: (AttributeSet -> b) -> b -> TH a -> TH a
+-- updateAttributeSet selector newValue (Atomic attSet modDecl) = let
+--     selected = selector attSet
+--     in Atomic attSet {selected = newValue} modDecl
+
+updateWhen :: AttributeSet -> JBE_EXP -> AttributeSet
+updateWhen attSet jjbeParen = let
+    w = kwWhen attSet
+    existingJBEEXP = case w of
+        VarContainingJinja [JinjaBooleanExp existingJBEEXP'] -> existingJBEEXP'
+        SimpleVarBool b -> JBE_EXP_PRIM $ (\case {True -> JBE_PRIM_TRUE; False -> JBE_PRIM_FALSE}) b
+    w' = VarContainingJinja [JinjaBooleanExp (
+        JBE_EXP_BINARYOP (JBE_EXP_PARENEXP existingJBEEXP) JBE_OP_AND (JBE_EXP_PARENEXP jjbeParen)
+        )]
+    in attSet {kwWhen=w'}
+
+updateWhenTH :: TH a -> JBE_EXP -> TH a
+updateWhenTH (Atomic attSet modDecl uid) jbeEXP = Atomic (updateWhen attSet jbeEXP) modDecl uid
+updateWhenTH (ContainingBlock attSet block uid) jbeEXP = ContainingBlock (updateWhen attSet jbeEXP) block uid
+
+ignoreError :: TH a -> TH a
+ignoreError (Atomic attSet modDecl uid) = Atomic attSet {kwIgnoreErrors = SimpleVarBool True} modDecl uid
+ignoreError (ContainingBlock attSet block uid) = ContainingBlock attSet {kwIgnoreErrors = SimpleVarBool True} block uid
+
+-- propagateAttributeSetWithinBlock :: AttributeSet -> [TH a] -> [TH a]
+-- propagateAttributeSetWithinBlock attSet = Prelude.map (applyAttributeSetToTH attSet)
+--     where
+--         mergeAttributeSets :: AttributeSet -> AttributeSet -> AttributeSet
+--         mergeAttributeSets = undefined
+--         applyAttributeSetToTH :: AttributeSet -> TH a -> TH a
+--         applyAttributeSetToTH parentAttSet (Atomic localAttSet modDecl) = Atomic (mergeAttributeSets parentAttSet localAttSet) modDecl
+--         applyAttributeSetToTH parentAttSet (ContainingBlock localAttSet block) = let
+--             merged = mergeAttributeSets parentAttSet localAttSet
+
+
+-- invalid attributes for blocks: changed_when, failed_when, loop, retries, force_handlers, register
+-- attributes that get overwritten by more local definitions: notify, var, when
+mergeAttributeSets :: AttributeSet -> AttributeSet -> AttributeSet -- assumed that block is parent and atomic is child; this is overly permissive for block to block
+mergeAttributeSets parentAttSet childAttSet = AttributeSet {
+    kwName=arrange kwName mergeNames,
+    kwForceHandlers=arrange kwForceHandlers neither,
+    kwNotify=arrange kwNotify onlyChooseRight,
+    kwLoop=arrange kwLoop onlyChooseRight,
+    kwWhen=arrange kwWhen chooseRight,
+    kwVars=arrange kwVars mergeVars,
+    kwChangedWhen=arrange kwChangedWhen onlyChooseRight,
+    kwFailedWhen=arrange kwFailedWhen onlyChooseRight,
+    kwUntil=arrange kwUntil onlyChooseRight,
+    kwRetries=arrange kwRetries onlyChooseRight,
+    kwRegister=arrange kwRegister onlyChooseRight,
+    kwIgnoreErrors = arrange kwIgnoreErrors chooseRight
+}
+    where
+        extractBoth :: (AttributeSet -> a) -> AttributeSet -> AttributeSet -> (a -> a -> b) -> b
+        extractBoth selector attSet1 attSet2 func = func (selector attSet1) (selector attSet2)
+        onlyChooseRight :: Maybe a -> Maybe a -> Maybe a
+        onlyChooseRight x y = case x of
+            Just _ -> error "ERROR: Invalid attribute for block!"
+            Nothing -> y
+        chooseRight = flip const
+        neither :: Maybe a -> Maybe a -> Maybe a
+        neither Nothing Nothing = Nothing
+        neither _ _ = error "ERROR: Invalid attribute for block and/or task!"
+        mergeVars :: Maybe Var -> Maybe Var -> Maybe Var
+        mergeVars var1 var2 = let
+            getVar = \v -> fromMaybe (DictVar Data.Map.empty) v
+            getMSV = \(DictVar msv) -> msv -- should panic if not DictVar
+            unioned = Data.Map.union ((getMSV . getVar) var1) ((getMSV . getVar) var2)
+            in if null unioned
+                then Nothing
+                else Just $ DictVar unioned
+        mergeNames :: Maybe String -> Maybe String -> Maybe String
+        mergeNames ms1 ms2 = Just $ fromMaybe "NONAME_LEFT" ms1 ++ fromMaybe "NONAME_RIGHT" ms2
+        arrange s = extractBoth s parentAttSet childAttSet
+
+desugarAttributeSetsWithinBlock :: TH a -> TH a
+desugarAttributeSetsWithinBlock (Atomic _ _ _) = error "ERROR: desugarAttributeSetsWithinBlock was called on Atomic!"
+desugarAttributeSetsWithinBlock (ContainingBlock attSet block uid) = squishBlockAttributeSetsIntoAtomics AttributeSet {} (ContainingBlock attSet block uid)
+    where
+        squishBlockAttributeSetsIntoAtomics :: AttributeSet -> TH a -> TH a
+        squishBlockAttributeSetsIntoAtomics parentAttSet (Atomic localAttSet modDecl uid') = Atomic (mergeAttributeSets parentAttSet localAttSet) modDecl uid'
+        squishBlockAttributeSetsIntoAtomics parentAttSet (ContainingBlock localAttSet (Block _blockMain _rescue _always) uid') = let
+            merged = mergeAttributeSets parentAttSet localAttSet
+            mapApplyAtt = Prelude.map (squishBlockAttributeSetsIntoAtomics merged) . toList
+            _blockMain' = mapApplyAtt _blockMain
+            _rescue' = fmap mapApplyAtt _rescue
+            _always' = fmap mapApplyAtt _always
+            in ContainingBlock AttributeSet {} Block {
+                blockMain = fromList _blockMain',
+                rescue = fmap fromList _rescue',
+                always = fmap fromList _always'
+            } uid'
+
+
+-- Always draw on the second one!
+linkToPrevTH :: TH a -> TH a -> TH a
+-- linkToPrevTH (Atomic _ _ _) (Atomic x y uid) = Atomic x y uid
+linkToPrevTH prev (Atomic attSet2 modDecl uid) = let
+    succIndicator = getSuccessIndicator prev
+    newAttSet = updateWhen attSet2 succIndicator
+    in Atomic newAttSet modDecl uid
+linkToPrevTH prev (ContainingBlock attSet2 block2 uid) = let
+    -- settle links within block first
+    ContainingBlock attSet2' block2' uid' = drawArrowsWithinBlock (ContainingBlock attSet2 block2 uid)
+
+    -- then connect to prev task
+    _blockMain = blockMain block2'
+    blockMainList = toList _blockMain
+    b = head blockMainList
+    b' = linkToPrevTH prev b
+    newBlockMain = fromList (b' : tail blockMainList)
+    newAlways = do
+        _always <- always block2'
+        let alwaysList = toList _always
+        let a = head alwaysList
+        let a' = linkToPrevTH prev a
+        return (fromList (a' : tail alwaysList))
+    in ContainingBlock attSet2' (Block {
+        blockMain=newBlockMain,
+        rescue=rescue block2',
+        always=newAlways
+    }) uid'
+
+drawArrowsWithinBlock :: TH a -> TH a
+drawArrowsWithinBlock (Atomic _ _ _) = error "ERROR: Cannot call drawArrowsWithinBlock on Atomic!"
+drawArrowsWithinBlock (ContainingBlock attSet block uid) = let
+    _blockMain = iE . drawArrowsWithinBlockMain $ blockMain block
+    _rescue = iEM  (drawArrowsWithinRescue (rescue block) _blockMain)
+    _always = iEM . drawArrowsWithinAlways $ always block
+    in ContainingBlock attSet Block {
+        blockMain=_blockMain,
+        rescue=_rescue,
+        always=_always
+    } uid
+        where
+            iE :: NonEmpty (TH a) -> NonEmpty (TH a)
+            iE = Data.List.NonEmpty.map ignoreError
+            iEM :: Maybe (NonEmpty (TH a)) -> Maybe (NonEmpty (TH a))
+            iEM = fmap iE
+
+
+drawArrowsWithinBlockMain :: NonEmpty (TH a) -> NonEmpty (TH a)
+drawArrowsWithinBlockMain _blockMain = let
+    blockMainList = toList _blockMain
+    chained = chainTogether blockMainList
+    in fromList chained
+
+chainTogether :: [TH a] -> [TH a]
+chainTogether thList = head thList : zipWith linkToPrevTH thList (tail thList)
+
+drawArrowsWithinRescue :: Maybe (NonEmpty (TH a)) -> NonEmpty (TH a) -> Maybe (NonEmpty (TH a))
+drawArrowsWithinRescue _rescue _blockMain = do
+    _rescue' <- _rescue
+    let rescueList = toList _rescue'
+    let blockMainList = toList _blockMain
+    let allBlockMainFailIndicators = Prelude.map getFailedIndicator blockMainList
+    let orred = orIndicatorsTogether allBlockMainFailIndicators
+    let firstRescue = head rescueList
+    let firstRescue' = updateWhenTH firstRescue orred
+    let rescueList' = firstRescue' : tail rescueList
+    let chained = chainTogether rescueList'
+    return $ fromList chained
+
+drawArrowsWithinAlways :: Maybe (NonEmpty (TH a)) -> Maybe (NonEmpty (TH a))
+drawArrowsWithinAlways _always = do
+    _always' <- _always
+    let alwaysList = toList _always'
+    let chained = chainTogether alwaysList
+    return $ fromList chained
+
+orIndicatorsTogether :: [JBE_EXP] -> JBE_EXP
+orIndicatorsTogether = foldl (`JBE_EXP_BINARYOP` JBE_OP_OR) (JBE_EXP_PRIM JBE_PRIM_FALSE)
+
+flattenBlocks :: [TH a] -> [TH a]
+flattenBlocks = concatMap flattenBlock
+    where
+        flattenBlock :: TH a -> [TH a]
+        flattenBlock (Atomic x y z) = [Atomic x y z]
+        flattenBlock (ContainingBlock _ (Block _blockMain _rescue _always) _) = let
+            bml = toList _blockMain
+            rl = maybe [] toList _rescue
+            al = maybe [] toList _always
+            in bml ++ rl ++ al

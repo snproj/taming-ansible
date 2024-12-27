@@ -7,10 +7,11 @@ import GrammarTypes.AnsibleGrammarTypes
 import Data.Map (elems, Map, empty, insert, lookup, map, fromList)
 import Control.Monad.Reader (Reader, ask, MonadTrans (lift), runReader, local)
 import Control.Monad.Trans.Maybe (MaybeT(..))
-import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust)
+import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust, catMaybes)
 import Data.List.NonEmpty (filter, intersperse, toList, NonEmpty ((:|)))
 import qualified Text.Regex.TDFA.CorePattern as Data.List
 import Control.Monad (zipWithM)
+import Semantics.UIDSetter (buildUID)
 
 data UVRResolve = UVRResolve String Var
 
@@ -61,7 +62,7 @@ instance Resolvable Var where
             return (DictVar msv')
         SimpleVarBool b -> return (SimpleVarBool b)
         SimpleVarFloat f -> return (SimpleVarFloat f)
-        SimpleVarInt i -> return (SimpleVarInt i)
+        SimpleVarInt i -> return (SimpleVarInt i)   
         SimpleVarString s -> return (SimpleVarString s)
 
 instance Resolvable (Map String Var) where
@@ -117,3 +118,11 @@ resolveUnrolledModDeclWithIndexVar mds = do
                 _ -> error "ERROR: _indexvar' must be SimpleVarString!"
     let rUVR = Prelude.map (UVRResolve _indexVar . SimpleVarInt) [0..numberOfLoopVals-1]
     mapM (\(u, m) -> return $ runReader (resolveUVR m) u) (zip rUVR mds)
+
+createRegisterUnifierTask :: UID -> [TH a] -> TH a
+createRegisterUnifierTask origTHUID thl = let
+    regsList = mapMaybe (kwRegister . thAttributeSet) thl
+    regsAsVars = Prelude.map SimpleVarString regsList
+    in Atomic AttributeSet{} (GenericModDecl "unify_loop_ds_regs" (Data.Map.fromList [("loop_ds_task_regs", ListVar regsAsVars)])) (buildUID origTHUID UnsetUID "unifyregs")
+
+

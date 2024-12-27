@@ -14,6 +14,13 @@ module GrammarTypes.AnsibleGrammarTypes
         -- HandlersFile(..),
         RoleSubDirFileName(..),
         JinjaElem(..),
+        JBE_EXP(..),
+        JBE_PRIM(..),
+        JBE_REG(..),
+        JBE_TOP(..),
+        JBE_OP(..),
+        JBE_TEST(..),
+        JBE_UNIMPL(..),
         Var(..),
         AttributeSet(..),
         -- KWForceHandlers,
@@ -37,6 +44,7 @@ module GrammarTypes.AnsibleGrammarTypes
         ModDecl(..),
         TaskMarker(..),
         HandlerMarker(..),
+        UID(..),
         -- BlockTask(..),
         -- RescueTask(..),
         -- AlwaysTask(..),
@@ -55,6 +63,7 @@ import qualified Data.Map as Map
 import Data.List (elemIndices)
 
 import GHC.Generics
+import Data.Hashable
 
 -------------------------------------------
 --
@@ -89,7 +98,7 @@ data Playbook = PlaybookDefinedHere (NonEmpty Play)
 
 data Play = Play {
     hostPattern :: HostPattern,
-    attributeSet :: AttributeSet,
+    playAttributeSet :: AttributeSet,
     tasks :: Maybe [TH TaskMarker],
     handlers :: Maybe [TH HandlerMarker],
     roleNames :: Maybe [String]
@@ -149,7 +158,45 @@ data JinjaElem -- TODO: Formalize jinja lmao
     = JustString String -- this should instead be resolved into stuff within jinja double brackets
     -- | LoopTarget
     | UnresolvedVarRef String
+    | JinjaBooleanExp JBE_EXP
     deriving (Generic, Show, Eq, Ord)
+instance Hashable JinjaElem
+
+data JBE_EXP
+    = JBE_EXP_REGTEST JBE_REG JBE_TOP JBE_TEST
+    | JBE_EXP_BINARYOP JBE_EXP JBE_OP JBE_EXP
+    | JBE_EXP_UNARYOP JBE_OP JBE_EXP
+    | JBE_EXP_PARENEXP JBE_EXP
+    | JBE_EXP_PRIM JBE_PRIM
+    | JBE_EXP_UNIMPL JBE_UNIMPL
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_EXP
+
+data JBE_PRIM = JBE_PRIM_TRUE | JBE_PRIM_FALSE
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_PRIM
+data JBE_REG = JBE_REG_R String
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_REG
+data JBE_TOP = JBE_TOP_IS
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_TOP
+data JBE_OP
+    = JBE_OP_AND
+    | JBE_OP_OR
+    | JBE_OP_NOT
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_OP
+data JBE_TEST
+    = JBE_TEST_SUCCEEDED
+    | JBE_TEST_FAILED
+    | JBE_TEST_DEFINED
+    | JBE_TEST_CHANGED
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_TEST
+data JBE_UNIMPL = JBE_UNIMPL
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JBE_UNIMPL
 
 -- data RawJJEVar = ListOfJJEs [JinjaElem] | SimpleJJE JinjaElem
 --     deriving (Generic, Show, Eq, Ord)
@@ -177,6 +224,7 @@ data Var
     | SimpleVarFloat Float
     | VarContainingJinja [JinjaElem]
     deriving (Generic, Show, Eq, Ord)
+instance Hashable Var
 
 -------------------------------------------
 --
@@ -195,14 +243,18 @@ data AttributeSet = AttributeSet {
     kwChangedWhen :: Maybe Var,
     kwFailedWhen :: Maybe Var,
     kwUntil :: Maybe Var,
-    kwRetries :: Var,
+    kwRetries :: Maybe Var, -- even though some fields are compulsory for atomic tasks, they may be invalid for blocks, plays etc, and thus must have Maybe
     kwRegister :: Maybe String,
-    kwIgnoreErrors :: Var
+    kwIgnoreErrors :: Var,
+    kwListen :: Maybe String
 } deriving (Generic, Eq, Ord)
+instance Hashable AttributeSet
 
 instance Show AttributeSet where
     show :: AttributeSet -> String
-    show _ = "<ATTSET>"
+    show attSet = show $ kwWhen attSet 
+
+
 
 
 data KWLoop = KWLoop {
@@ -211,7 +263,7 @@ data KWLoop = KWLoop {
     indexVar :: Maybe Var,
     pause :: Maybe Var
 } deriving (Generic, Show, Eq, Ord)
-
+instance Hashable KWLoop
 
 
 
@@ -239,16 +291,38 @@ data HandlerMarker = HandlerMarker
 -- newtype Task = Task TH TaskMarker
 -- newtype Handler = Handler TH HandlerMarker
 
-data TH a
-    = Atomic AttributeSet ModDecl
-    | ContainingBlock AttributeSet (Block a)
+data UID = SetUID String | UnsetUID
     deriving (Generic, Show, Eq, Ord)
+instance Hashable UID
+
+-- data TH a
+--     = Atomic AttributeSet ModDecl UID
+--     | ContainingBlock AttributeSet (Block a) UID
+--     deriving (Generic, Show, Eq, Ord)
+-- instance Hashable (TH a)
+
+data TH a
+  = Atomic {
+        thAttributeSet :: AttributeSet,
+        thModDecl :: ModDecl,
+        thUID :: UID
+    }
+  | ContainingBlock {
+        thAttributeSet :: AttributeSet,
+        thBlock :: Block a,
+        thUID :: UID
+    }
+  deriving (Generic, Show, Eq, Ord)
+
+instance Hashable (TH a)
+
 
 data Block a = Block {
     blockMain :: NonEmpty (TH a),
     rescue :: Maybe (NonEmpty (TH a)),
     always :: Maybe (NonEmpty (TH a))
 } deriving (Generic, Show, Eq, Ord)
+instance Hashable (Block a)
 
 -- data Block a = Block (NonEmpty (TH a)) (Maybe (Rescue a))
 --   deriving (Generic, Show, Eq, Ord)
@@ -293,7 +367,7 @@ data ModDecl
         , handlers_from :: Var
         }
     deriving (Generic, Show, Eq, Ord)
-
+instance Hashable ModDecl
 
 
 

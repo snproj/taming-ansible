@@ -46,7 +46,7 @@ instance FromJSON Play where
         (_attSet, _) <- getRemaining obj
         let res = Play {
             hostPattern=_hostPattern,
-            attributeSet=_attSet,
+            playAttributeSet=_attSet,
             tasks=_tasks,
             handlers=_handlers,
             roleNames=_roleNames
@@ -159,12 +159,12 @@ instance FromJSON (TH a) where
                             blockMain=Data.List.NonEmpty.fromList _block,
                             rescue = fmap Data.List.NonEmpty.fromList _rescue,
                             always = fmap Data.List.NonEmpty.fromList _always
-                            }))
+                            }) UnsetUID)
                     else do
                         let modName = head other
                         _mod <- obj .: modName :: Parser (Map String Var)
                         let _modDecl = getModDeclVariant (toString modName) _mod
-                        return (Atomic _attSet _modDecl)
+                        return (Atomic _attSet _modDecl UnsetUID)
                 -- [modName] -> do
                 --     _mod <- obj .: modName :: Parser (Map String Var)
                 --     let _modDecl = getModDeclVariant (toString modName) _mod
@@ -334,7 +334,7 @@ instance FromJSON AttributeSet where
             kwChangedWhen = _kwChangedWhen,
             kwFailedWhen = _kwFailedWhen,
             kwUntil = _kwUntil,
-            kwRetries = fromMaybe defaultRetriesNumber _kwRetries,
+            kwRetries = _kwRetries,
             kwRegister = _kwRegister,
             kwIgnoreErrors = fromMaybe defaultIgnoreErrors _kwIgnoreErrors
             })

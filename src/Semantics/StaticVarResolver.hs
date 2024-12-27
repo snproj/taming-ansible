@@ -103,7 +103,8 @@ resolveAttributeSet (AttributeSet
     _kwUntil
     _kwRetries
     _kwRegister
-    _kwIgnoreErrors) = do
+    _kwIgnoreErrors
+    _kwListen) = do
         _kwForceHandlers' <- traverse resolveVar _kwForceHandlers
         _kwNotify' <- traverse resolveVar _kwNotify
         _kwLoop' <- traverse resolveKWLoop _kwLoop
@@ -112,7 +113,7 @@ resolveAttributeSet (AttributeSet
         _kwChangedWhen' <- traverse resolveVar _kwChangedWhen
         _kwFailedWhen' <- traverse resolveVar _kwFailedWhen
         _kwUntil' <- traverse resolveVar _kwUntil
-        _kwRetries' <- resolveVar _kwRetries
+        _kwRetries' <- traverse resolveVar _kwRetries
         _kwIgnoreErrors' <- resolveVar _kwIgnoreErrors
         return (AttributeSet 
             _kwName
@@ -127,6 +128,7 @@ resolveAttributeSet (AttributeSet
             _kwRetries'
             _kwRegister
             _kwIgnoreErrors'
+            _kwListen
             )
 
 -- resolveAlwaysHandler :: AlwaysHandler -> Reader SymbolTable AlwaysHandler
@@ -171,16 +173,16 @@ resolveBlockTask (Block _blockMain _rescue _always) = do
     return (Block _blockMain' _rescue' _always')
 
 resolveTH :: TH a -> Reader SymbolTable (TH a)
-resolveTH (Atomic attSet modDecl) = do
+resolveTH (Atomic attSet modDecl uid) = do
     attSet' <- resolveAttributeSet attSet
     let newScopeAddons = kwVars attSet'
     modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
-    return (Atomic attSet' modDecl')
-resolveTH (ContainingBlock attSet blockTask) = do
+    return (Atomic attSet' modDecl' uid)
+resolveTH (ContainingBlock attSet blockTask uid) = do
     attSet' <- resolveAttributeSet attSet
     let newScopeAddons = kwVars attSet'
     blockTask' <- maybeWithNewScope newScopeAddons resolveBlockTask blockTask
-    return (ContainingBlock attSet' blockTask')
+    return (ContainingBlock attSet' blockTask' uid)
 
 -- resolveHandler :: Handler -> Reader SymbolTable Handler
 -- resolveHandler (AtomicHandler attSet modDecl) = do

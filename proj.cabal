@@ -68,7 +68,9 @@ library
                       Semantics.Desugar.DesugarHandlers,
                       Semantics.Desugar.DesugarBlocks,
                       Semantics.Desugar.DesugarImports,
-                      Semantics.StaticVarResolver
+                      Semantics.StaticVarResolver,
+                      Semantics.UIDSetter,
+                      Semantics.RegSetter
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -91,7 +93,8 @@ library
                       scientific,
                       mtl,
                       transformers,
-                      parsec ^>= 3.1.17.0
+                      parsec ^>= 3.1.17.0,
+                      hashable
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -162,4 +165,5 @@ test-suite taming-ansible-test
         scientific,
         mtl,
         transformers,
-        parsec ^>= 3.1.17.0
+        parsec ^>= 3.1.17.0,
+        hashable
