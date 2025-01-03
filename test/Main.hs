@@ -25,7 +25,7 @@ import Semantics.StaticVarResolver (resolveContainedUVRs)
 testYaml :: IO ()
 testYaml = do
     json <- B.readFile "/home/sunrise/research/test2.json"
-    let res = eitherDecode json :: Either String (TH TaskMarker)
+    let res = eitherDecode json :: Either String Task
     case res of
         Left s -> print s
         Right t -> print t
@@ -34,7 +34,7 @@ testYaml = do
 testSVR :: IO ()
 testSVR = do
     json <- B.readFile "/home/sunrise/research/testSVR.json"
-    let res = eitherDecode json :: Either String (TH TaskMarker)
+    let res = eitherDecode json :: Either String Task
     let res' = case res of
             Left s -> error ""
             Right t -> runReader (resolveContainedUVRs t) (SymbolTable (fromList [
@@ -64,7 +64,7 @@ testDSPlainRole = do
 testUnrollLoopForGenericMod :: IO ()
 testUnrollLoopForGenericMod = do
     json <- B.readFile "/home/sunrise/research/taskGenericModDeclWithLoop.json"
-    let res = eitherDecode json :: Either String (TH TaskMarker)
+    let res = eitherDecode json :: Either String Task
     let res' = case res of
             Left s -> error "ERROR: Some error during parsing the task!"
             Right t -> case t of

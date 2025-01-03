@@ -42,7 +42,7 @@ parseRootDir pbName (AnsibleDir mst) = let
         let onlyFiles = Map.filter (\case {ADir _ -> False; AFile _ -> True}) mst
         let withoutPB = Map.filterWithKey (\k _ -> k /= pbName) onlyFiles -- do not read the playbook file as a loose task file!
         let convToAYF = Map.map (\(AFile a) -> a) withoutPB
-        return (Map.map parseTaskListFromAFile convToAYF) :: Maybe (Map String [TH TaskMarker])
+        return (Map.map parseTaskListFromAFile convToAYF) :: Maybe (Map String [Task])
     in RootDir {
         playbook=pb,
         roledir=roles',
@@ -70,7 +70,7 @@ parseRoleFromADir (AnsibleDir mst) = let
     }
 
 
-parseTasksDir :: AnsibleFSThing -> Map RoleSubDirFileName [TH TaskMarker]
+parseTasksDir :: AnsibleFSThing -> Map RoleSubDirFileName [Task]
 parseTasksDir (ADir (AnsibleDir adir)) = let
     gotTasks = Map.map (\athing -> case athing of
         ADir _ -> error ""
@@ -78,7 +78,7 @@ parseTasksDir (ADir (AnsibleDir adir)) = let
     gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
     in gotRSDFN
 
-parseHandlersDir :: AnsibleFSThing -> Map RoleSubDirFileName [TH HandlerMarker]
+parseHandlersDir :: AnsibleFSThing -> Map RoleSubDirFileName [Task]
 parseHandlersDir (ADir (AnsibleDir adir)) =
   let gotHandlers =
         Map.map
@@ -113,12 +113,12 @@ stringToRSDFN s = case s of
     -- "main.yaml" -> MainName
     _ -> OtherName s
 
-parseTaskListFromAFile :: AnsibleYAMLFile -> [TH TaskMarker]
-parseTaskListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [TH TaskMarker] of
+parseTaskListFromAFile :: AnsibleYAMLFile -> [Task]
+parseTaskListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [Task] of
         Left s -> error s
         Right taskList -> taskList
 
-parseHandlerListFromAFile :: AnsibleYAMLFile -> [TH HandlerMarker]
-parseHandlerListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [TH HandlerMarker] of
+parseHandlerListFromAFile :: AnsibleYAMLFile -> [Task]
+parseHandlerListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [Task] of
         Left s -> error s
         Right handlerList -> handlerList

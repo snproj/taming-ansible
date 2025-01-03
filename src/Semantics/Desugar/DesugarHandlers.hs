@@ -7,16 +7,16 @@ import Data.List.NonEmpty (fromList, toList)
 import Data.Maybe (fromJust, mapMaybe)
 import Data.Map (Map, empty, fromList, unionWith, lookup)
 
-handlerToTask :: TH HandlerMarker -> TH TaskMarker
-handlerToTask (Atomic x y z) = Atomic x y z
-handlerToTask (ContainingBlock x (Block _blockMain _rescue _always) z) = let
-    f = Data.List.NonEmpty.fromList . map handlerToTask . toList
-    bm = f _blockMain
-    r = fmap f _rescue
-    a = fmap f _always
-    in ContainingBlock x (Block bm r a) z
+-- handlerToTask :: TH HandlerMarker -> TH TaskMarker
+-- handlerToTask (Atomic x y z) = Atomic x y z
+-- handlerToTask (ContainingBlock x (Block _blockMain _rescue _always) z) = let
+--     f = Data.List.NonEmpty.fromList . map handlerToTask . toList
+--     bm = f _blockMain
+--     r = fmap f _rescue
+--     a = fmap f _always
+--     in ContainingBlock x (Block bm r a) z
 
-getNotifyCond :: TH TaskMarker -> JBE_EXP
+getNotifyCond :: Task -> JBE_EXP
 getNotifyCond th = let
     reg = (fromJust . atomicRegister . thAtomicAttributeSet) th
     in JBE_EXP_BINARYOP
@@ -29,45 +29,53 @@ varToListOfStrings (ListVar ls) = concatMap varToListOfStrings ls
 varToListOfStrings (SimpleVarString s) = [s]
 varToListOfStrings _ = error ""
 
-desugarHandlers :: ([TH TaskMarker], [TH HandlerMarker]) -> [TH TaskMarker]
+-- desugarHandlers :: ([TH TaskMarker], [TH HandlerMarker]) -> [TH TaskMarker]
+desugarHandlers :: ([Task], [Task]) -> [Task]
 desugarHandlers (tl, hl) = let
     mth = getTaskHandlerMap tl hl
     hl' = map (`updateHandlerWhen` mth) hl
-    ht = map handlerToTask hl'
-    in tl ++ ht
+    -- ht = map handlerToTask hl'
+    in tl ++ hl'
     where
-        getTaskHandlerMap :: [TH TaskMarker] -> [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+        -- getTaskHandlerMap :: [TH TaskMarker] -> [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+        getTaskHandlerMap :: [Task] -> [Task] -> Map Task [Task]
         getTaskHandlerMap ts hs = let
             mlh = getTopicHandlerMap hs
             in getTaskHandlerMap' ts mlh
             where
-                getIndivTopicHandlerMap :: TH HandlerMarker -> Map String [TH HandlerMarker]
+                -- getIndivTopicHandlerMap :: TH HandlerMarker -> Map String [TH HandlerMarker]
+                getIndivTopicHandlerMap :: Task -> Map String [Task]
                 getIndivTopicHandlerMap handler = let
                     l = (atomicListen . thAtomicAttributeSet) handler
                     l' = maybe [] varToListOfStrings l
                     l'' = Data.Map.fromList $ map (\s -> (s, [handler])) l'
                     in l''
-                getTopicHandlerMap :: [TH HandlerMarker] -> Map String [TH HandlerMarker]
+                -- getTopicHandlerMap :: [TH HandlerMarker] -> Map String [TH HandlerMarker]
+                getTopicHandlerMap :: [Task] -> Map String [Task]
                 getTopicHandlerMap hs = let
                     ms = map getIndivTopicHandlerMap hs
                     in foldl (unionWith (++)) empty ms
-                getIndivTaskHandlerMap :: TH TaskMarker -> Map String [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+                -- getIndivTaskHandlerMap :: TH TaskMarker -> Map String [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+                getIndivTaskHandlerMap :: Task -> Map String [Task] -> Map Task [Task]
                 getIndivTaskHandlerMap task msh = let
                     n = (atomicNotify . thAtomicAttributeSet) task
                     n' = maybe [] varToListOfStrings n
                     hs = concat $ mapMaybe (`Data.Map.lookup` msh) n'
                     mht = Data.Map.fromList $ map (\h -> (h, [task])) hs
                     in mht
-                getTaskHandlerMap' :: [TH TaskMarker] -> Map String [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+                -- getTaskHandlerMap' :: [TH TaskMarker] -> Map String [TH HandlerMarker] -> Map (TH HandlerMarker) [TH TaskMarker]
+                getTaskHandlerMap' :: [Task] -> Map String [Task] -> Map Task [Task]
                 getTaskHandlerMap' ts msh = let
                     ms = map (`getIndivTaskHandlerMap` msh) ts
                     in foldl (unionWith (++)) empty ms
-        updateHandlerWhen :: TH HandlerMarker -> Map (TH HandlerMarker) [TH TaskMarker] -> TH HandlerMarker
+        -- updateHandlerWhen :: TH HandlerMarker -> Map (TH HandlerMarker) [TH TaskMarker] -> TH HandlerMarker
+        updateHandlerWhen :: Task -> Map Task [Task] -> Task
         updateHandlerWhen handler mht = let
             ts = fromJust $ Data.Map.lookup handler mht
             in updateHandlerWhen' handler ts
             where
-                updateHandlerWhen' :: TH HandlerMarker -> [TH TaskMarker] -> TH HandlerMarker
+                -- updateHandlerWhen' :: TH HandlerMarker -> [TH TaskMarker] -> TH HandlerMarker
+                updateHandlerWhen' :: Task -> [Task] -> Task
                 updateHandlerWhen' h ts = let
                     aas = thAtomicAttributeSet h
                     VarContainingJinja (JBEPhrase jbe) = atomicWhen aas

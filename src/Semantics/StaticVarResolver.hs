@@ -200,16 +200,16 @@ instance UVRResolvable PlayAttributeSet where
                 _playVars'
                 )
 
-instance UVRResolvable (Block a) where
-    resolveContainedUVRs :: Block a -> Reader SymbolTable (Block a)
+instance UVRResolvable Block where
+    resolveContainedUVRs :: Block -> Reader SymbolTable Block
     resolveContainedUVRs (Block _blockMain _rescue _always) = do
         _blockMain' <- traverse resolveContainedUVRs _blockMain
         _rescue' <- traverse (traverse resolveContainedUVRs) _rescue
         _always' <- traverse (traverse resolveContainedUVRs) _always
         return (Block _blockMain' _rescue' _always')
 
-instance UVRResolvable (TH a) where
-    resolveContainedUVRs :: TH a -> Reader SymbolTable (TH a)
+instance UVRResolvable Task where
+    resolveContainedUVRs :: Task -> Reader SymbolTable Task
     resolveContainedUVRs (Atomic attSet modDecl uid) = do
         attSet' <- resolveContainedUVRs attSet
         let newScopeAddons = atomicVars attSet'

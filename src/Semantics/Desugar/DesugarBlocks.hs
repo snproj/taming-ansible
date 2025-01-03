@@ -22,7 +22,7 @@ import Data.Hashable (hash)
 --                 res = case kwName attSet of
 --                     Nothing -> hash
 
-getSuccessIndicator :: TH a -> JBE_EXP
+getSuccessIndicator :: Task -> JBE_EXP
 getSuccessIndicator (Atomic attSet _ _) = let
     reg = fromJust $ atomicRegister attSet
     in JBE_EXP_BINARYOP
@@ -36,7 +36,7 @@ getSuccessIndicator (ContainingBlock _ block _) = let
         Just lastR' -> JBE_EXP_BINARYOP lastB JBE_OP_OR lastR'
         Nothing -> lastB
 
-getFailedIndicator :: TH a -> JBE_EXP
+getFailedIndicator :: Task -> JBE_EXP
 getFailedIndicator (Atomic attSet _ _) = let
     reg = fromJust $ atomicRegister attSet
     in JBE_EXP_BINARYOP
@@ -78,15 +78,15 @@ updateWhenBlock attSet jjbeParen =
           )
    in attSet {blockWhen = w'}
 
-updateWhenTH :: TH a -> JBE_EXP -> TH a
+updateWhenTH :: Task -> JBE_EXP -> Task
 updateWhenTH (Atomic attSet modDecl uid) jbeEXP = Atomic (updateWhen attSet jbeEXP) modDecl uid
 updateWhenTH (ContainingBlock attSet block uid) jbeEXP = ContainingBlock (updateWhenBlock attSet jbeEXP) block uid
 
-ignoreError :: TH a -> TH a
+ignoreError :: Task -> Task
 ignoreError (Atomic attSet modDecl uid) = Atomic attSet {atomicIgnoreErrors = SimpleVarBool True} modDecl uid
 ignoreError (ContainingBlock _ _ _) = error "ERROR: For now, ContainingBlocks cannot have `ignoreError`."
 
-atomizeBlockAttributes :: TH a -> Reader (Maybe BlockAttributeSet) (TH a)
+atomizeBlockAttributes :: Task -> Reader (Maybe BlockAttributeSet) Task
 atomizeBlockAttributes (Atomic aas modDecl uid) = do
     mbas <- ask
     case mbas of
@@ -217,7 +217,7 @@ combineWhen v1 v2 = let
 
 
 -- Always draw on the second one!
-linkToPrevTH :: TH a -> TH a -> TH a
+linkToPrevTH :: Task -> Task -> Task
 -- linkToPrevTH (Atomic _ _ _) (Atomic x y uid) = Atomic x y uid
 linkToPrevTH prev (Atomic attSet2 modDecl uid) = let
     succIndicator = getSuccessIndicator prev
@@ -245,7 +245,7 @@ linkToPrevTH prev (ContainingBlock attSet2 block2 uid) = let
         always=newAlways
     }) uid'
 
-drawArrowsWithinBlock :: TH a -> TH a
+drawArrowsWithinBlock :: Task -> Task
 drawArrowsWithinBlock (Atomic _ _ _) = error "ERROR: Cannot call drawArrowsWithinBlock on Atomic!"
 drawArrowsWithinBlock (ContainingBlock attSet block uid) = let
     _blockMain = iE . drawArrowsWithinBlockMain $ blockMain block
@@ -257,19 +257,19 @@ drawArrowsWithinBlock (ContainingBlock attSet block uid) = let
         always=_always
     } uid
         where
-            iE :: NonEmpty (TH a) -> NonEmpty (TH a)
+            iE :: NonEmpty Task -> NonEmpty Task
             iE = Data.List.NonEmpty.map ignoreError
-            iEM :: Maybe (NonEmpty (TH a)) -> Maybe (NonEmpty (TH a))
+            iEM :: Maybe (NonEmpty Task) -> Maybe (NonEmpty Task)
             iEM = fmap iE
 
 
-drawArrowsWithinBlockMain :: NonEmpty (TH a) -> NonEmpty (TH a)
+drawArrowsWithinBlockMain :: NonEmpty Task -> NonEmpty Task
 drawArrowsWithinBlockMain _blockMain = let
     blockMainList = toList _blockMain
     chained = chainTogether blockMainList
     in fromList chained
 
-chainTogether :: [TH a] -> [TH a]
+chainTogether :: [Task] -> [Task]
 chainTogether thList = head thList : zipWith linkToPrevTH thList (tail thList)
 
 desugarBlocksInPlay :: Play -> Play
@@ -279,7 +279,7 @@ desugarBlocksInPlay p = let
     hl = (flattenBlocks . chainTogether) (handlers p')
     in p' {tasks=tl,handlers=hl}
 
-drawArrowsWithinRescue :: Maybe (NonEmpty (TH a)) -> NonEmpty (TH a) -> Maybe (NonEmpty (TH a))
+drawArrowsWithinRescue :: Maybe (NonEmpty Task) -> NonEmpty Task -> Maybe (NonEmpty Task)
 drawArrowsWithinRescue _rescue _blockMain = do
     _rescue' <- _rescue
     let rescueList = toList _rescue'
@@ -292,7 +292,7 @@ drawArrowsWithinRescue _rescue _blockMain = do
     let chained = chainTogether rescueList'
     return $ fromList chained
 
-drawArrowsWithinAlways :: Maybe (NonEmpty (TH a)) -> Maybe (NonEmpty (TH a))
+drawArrowsWithinAlways :: Maybe (NonEmpty Task) -> Maybe (NonEmpty Task)
 drawArrowsWithinAlways _always = do
     _always' <- _always
     let alwaysList = toList _always'
@@ -302,10 +302,10 @@ drawArrowsWithinAlways _always = do
 orIndicatorsTogether :: [JBE_EXP] -> JBE_EXP
 orIndicatorsTogether = foldl (`JBE_EXP_BINARYOP` JBE_OP_OR) (JBE_EXP_PRIM False)
 
-flattenBlocks :: [TH a] -> [TH a]
+flattenBlocks :: [Task] -> [Task]
 flattenBlocks = concatMap flattenBlock
     where
-        flattenBlock :: TH a -> [TH a]
+        flattenBlock :: Task -> [Task]
         flattenBlock (Atomic x y z) = [Atomic x y z]
         flattenBlock (ContainingBlock _ (Block _blockMain _rescue _always) _) = let
             bml = toList _blockMain

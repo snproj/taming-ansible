@@ -15,7 +15,7 @@ buildUID (SetUID s1) UnsetUID s2 = SetUID (s1 ++ "_" ++ s2)
 buildUID (SetUID _) (SetUID _) _ = error "ERROR: buildUID was called on a SetUID as the child!"
 buildUID UnsetUID _ _ = error "ERROR: buildUID was called with an UnsetUID as the parent!"
 
-zipper :: UID -> String -> Int ->TH a -> Reader UID (TH a)
+zipper :: UID -> String -> Int -> Task -> Reader UID Task
 zipper parentUID s seqNum th =
     let _thUID = case th of
           Atomic _ _ uid' -> uid'
@@ -23,16 +23,16 @@ zipper parentUID s seqNum th =
         indivUID = buildUID parentUID _thUID (s ++ show seqNum)
      in local (const indivUID) (setUID th)
 
-instance UIDSettable [TH a] where
-  setUID :: [TH a] -> Reader UID [TH a]
+instance UIDSettable [Task] where
+  setUID :: [Task] -> Reader UID [Task]
   setUID thl = do
     parentUID <- ask -- e.g. "r1_tasks_myfile_task"
     let sequenceNumbers = [0..]
     let x = zipWith (zipper parentUID "TH") sequenceNumbers thl
     sequence x
 
-instance UIDSettable (TH a) where
-    setUID :: TH a -> Reader UID (TH a)
+instance UIDSettable Task where
+    setUID :: Task -> Reader UID Task
     setUID (Atomic attSet modDecl _) = do
         fullUID <- ask
         return (Atomic attSet modDecl fullUID)

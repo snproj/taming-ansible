@@ -56,7 +56,7 @@ resolveUnrolledModDeclWithIndexVar mds = do
     let rUVR = Prelude.map ((SymbolTable . Data.Map.singleton _indexVar) . SimpleVarInt) [0 .. numberOfLoopVals-1]
     mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
 
-createRegisterUnifierTask :: UID -> [TH a] -> TH a
+createRegisterUnifierTask :: UID -> [Task] -> Task
 createRegisterUnifierTask origTHUID thl = let
     regsList = mapMaybe (atomicRegister . thAtomicAttributeSet) thl
     regsAsVars = Prelude.map SimpleVarString regsList
@@ -70,13 +70,13 @@ getReferencedRegsFromJBE jbe = case jbe of
     JBE_EXP_PARENEXP e -> getReferencedRegsFromJBE e
     _ -> []
 
-getReferencedTHsFromWhen :: TH a -> [TH a]
+getReferencedTHsFromWhen :: Task -> [Task]
 getReferencedTHsFromWhen (Atomic aas _ _) = let
     w = atomicWhen aas
-    regs = 
+    regs = undefined
     in undefined
 
-unrollTH :: TH a -> [TH a]
+unrollTH :: Task -> [Task]
 unrollTH (Atomic aas modDecl uid) = let
     ml = atomicLoop aas
     in case ml of

@@ -32,7 +32,7 @@ desugarPlainRoleCalls (Play hp attSet ts hs rNames) = do
     return (fromMaybe (Play hp attSet ts hs Nothing) res)
 
 
-getMainTasksFromRole :: Role -> Maybe [TH TaskMarker]
+getMainTasksFromRole :: Role -> Maybe [Task]
 getMainTasksFromRole r = do
     _tasksDir <- tasksDir r
     Map.lookup MainName _tasksDir
@@ -51,7 +51,7 @@ getMainTasksFromRole r = do
 --     _ -> error ""
 --   getHandlerFileFromHandlerDir handlerDir MainName
 
-getMainHandlersFromRole :: Role -> Maybe [TH HandlerMarker]
+getMainHandlersFromRole :: Role -> Maybe [Task]
 getMainHandlersFromRole r = do
     _handlersDir <- handlersDir r
     Map.lookup MainName _handlersDir

@@ -29,8 +29,8 @@ import Data.Maybe (fromMaybe)
 instance FromJSON Play where
     parseJSON = withObject "Play" (\obj -> do
         _hostPattern <- obj .: fromString "hosts" :: Parser HostPattern
-        _tasks <- obj .:? fromString "tasks" :: Parser (Maybe [TH TaskMarker])
-        _handlers <- obj.:? fromString "handlers" :: Parser (Maybe [TH HandlerMarker])
+        _tasks <- obj .:? fromString "tasks" :: Parser (Maybe [Task])
+        _handlers <- obj.:? fromString "handlers" :: Parser (Maybe [Task])
         _roleNames <- obj.:? fromString "roles" :: Parser (Maybe [String])
         let (_attSetKM, _) = getRemaining obj attSetKeyListGLOBAL
         _playAttSet <- parseJSON (toJSON _attSetKM) :: Parser PlayAttributeSet
@@ -122,8 +122,8 @@ getRemaining obj attSetKeyList = let
     leftoverKeywords = keys obj \\ attSetKeyListGLOBAL
     in (_attSetKM, leftoverKeywords)
 
-instance FromJSON (TH a) where
-    parseJSON :: Value -> Parser (TH a)
+instance FromJSON Task where
+    parseJSON :: Value -> Parser Task
     parseJSON = withObject "TH" (\obj -> do
         let (_attSetKM, leftoverKeywords) = getRemaining obj attSetKeyListGLOBAL
 

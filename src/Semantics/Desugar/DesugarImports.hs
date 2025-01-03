@@ -14,7 +14,7 @@ getRSDFN s = case s of
     "main" -> MainName
     other -> OtherName other
 
-getTasksFromRole :: Var -> Var -> Reader RootDir (Maybe [TH TaskMarker])
+getTasksFromRole :: Var -> Var -> Reader RootDir (Maybe [Task])
 getTasksFromRole (SimpleVarString roleName) (SimpleVarString taskFileName) = do
     rd <- ask
     let _roledir = roledir rd
@@ -29,7 +29,7 @@ getTasksFromRole (SimpleVarString roleName) (SimpleVarString taskFileName) = do
                     Just tl -> return (Just tl)
 getTasksFromRole _ _ = error ""
 
-getHandlersFromRole :: Var -> Var -> Reader RootDir (Maybe [TH HandlerMarker])
+getHandlersFromRole :: Var -> Var -> Reader RootDir (Maybe [Task])
 getHandlersFromRole (SimpleVarString roleName) (SimpleVarString handlerFileName) = do
     rd <- ask
     let _roledir = roledir rd
@@ -44,7 +44,7 @@ getHandlersFromRole (SimpleVarString roleName) (SimpleVarString handlerFileName)
                     Just hl -> return (Just hl)
 getHandlersFromRole _ _ = error ""
 
-getTasksFromLooseFile :: Var -> Reader RootDir (Maybe [TH TaskMarker])
+getTasksFromLooseFile :: Var -> Reader RootDir (Maybe [Task])
 getTasksFromLooseFile (SimpleVarString s) = do
     rd <- ask
     case looseTaskFiles rd of
@@ -52,12 +52,12 @@ getTasksFromLooseFile (SimpleVarString s) = do
         Just msf -> return $ Map.lookup s msf
 getTasksFromLooseFile _ = error "ERROR: input to getTasksFromLooseFile must be SimpleVarString!"
 
-taskToHandler :: TH TaskMarker -> TH HandlerMarker
-taskToHandler (Atomic attSet modDecl uid) = Atomic attSet modDecl uid
-taskToHandler (ContainingBlock attSet block uid) = ContainingBlock attSet (blockToHandler block) uid
+-- taskToHandler :: TH TaskMarker -> TH HandlerMarker
+-- taskToHandler (Atomic attSet modDecl uid) = Atomic attSet modDecl uid
+-- taskToHandler (ContainingBlock attSet block uid) = ContainingBlock attSet (blockToHandler block) uid
 
-blockToHandler :: Block TaskMarker -> Block HandlerMarker
-blockToHandler (Block mainBlock _rescue _always) = Block (Data.List.NonEmpty.map taskToHandler mainBlock) (fmap (Data.List.NonEmpty.map taskToHandler) _rescue) (fmap (Data.List.NonEmpty.map taskToHandler) _always)
+-- blockToHandler :: Block TaskMarker -> Block HandlerMarker
+-- blockToHandler (Block mainBlock _rescue _always) = Block (Data.List.NonEmpty.map taskToHandler mainBlock) (fmap (Data.List.NonEmpty.map taskToHandler) _rescue) (fmap (Data.List.NonEmpty.map taskToHandler) _always)
 
 joinMaybeVarLists :: Maybe Var -> Maybe Var -> Maybe Var
 joinMaybeVarLists n1 n2 = case (n1, n2) of
@@ -89,7 +89,7 @@ getJBE v = error $ show v
 joinWhens :: Var -> Var -> Var
 joinWhens w1 w2 = VarContainingJinja (JBEPhrase (JBE_EXP_BINARYOP (getJBE w1) JBE_OP_AND (getJBE w2)))
 
-applyParentAtomicAttSetToImportedTask :: AtomicAttributeSet -> TH a -> TH a
+applyParentAtomicAttSetToImportedTask :: AtomicAttributeSet -> Task -> Task
 applyParentAtomicAttSetToImportedTask aas imported = case imported of
     (Atomic attSet modDecl uid) -> Atomic (attSet {
         atomicNotify = joinMaybeVarLists (atomicNotify aas) (atomicNotify attSet),
@@ -102,7 +102,7 @@ applyParentAtomicAttSetToImportedTask aas imported = case imported of
         blockVars = joinMaybeVarLists (atomicVars aas) (blockVars attSet)
         }) _block uid
 
-getImportsFromTask :: TH TaskMarker -> Reader RootDir ([TH TaskMarker], [TH HandlerMarker])
+getImportsFromTask :: Task -> Reader RootDir ([Task], [Task])
 getImportsFromTask (Atomic attSet modDecl uid) = case modDecl of
     (GenericModDecl _ _) -> return ([Atomic attSet modDecl uid], [])
     (IncludeTasks _ _) -> return ([Atomic attSet modDecl uid], [])
@@ -139,14 +139,16 @@ getImportsFromTask (ContainingBlock attSet (Block _blockMain _rescue _always) ui
     let hl = foldl appendHandlersWithDupRemoval [] [hlbm, hlr, hla]
     return ([newBlock], hl)
 
-collateGetImportsFromTasks :: [TH TaskMarker] -> Reader RootDir ([TH TaskMarker], [TH HandlerMarker])
+-- collateGetImportsFromTasks :: [TH TaskMarker] -> Reader RootDir ([TH TaskMarker], [TH HandlerMarker])
+collateGetImportsFromTasks :: [Task] -> Reader RootDir ([Task], [Task])
 collateGetImportsFromTasks tl = do
     tupList <- traverse getImportsFromTask tl
     let (expandedTL, handlersFromTasks) = unzip tupList
     let dupRemHandlerList = foldl appendHandlersWithDupRemoval [] handlersFromTasks
     return (concat expandedTL, dupRemHandlerList)
 
-desugarImports :: ([TH TaskMarker], [TH HandlerMarker]) -> Reader RootDir ([TH TaskMarker], [TH HandlerMarker])
+-- desugarImports :: ([TH TaskMarker], [TH HandlerMarker]) -> Reader RootDir ([TH TaskMarker], [TH HandlerMarker])
+desugarImports :: ([Task], [Task]) -> Reader RootDir ([Task], [Task])
 desugarImports (tl, hl) = do
     (expandedTL, handlersFromTasks) <- collateGetImportsFromTasks tl
     let hl' = appendHandlersWithDupRemoval hl handlersFromTasks
@@ -165,7 +167,7 @@ desugarImportsInPlay play = do
         roleNames=roleNames play
     }
 
-appendHandlersWithDupRemoval :: [TH HandlerMarker] -> [TH HandlerMarker] -> [TH HandlerMarker]
+appendHandlersWithDupRemoval :: [Task] -> [Task] -> [Task]
 appendHandlersWithDupRemoval handlerList newHandlers = let
     remDup = Prelude.filter (`notElem` newHandlers) handlerList
     in remDup ++ newHandlers

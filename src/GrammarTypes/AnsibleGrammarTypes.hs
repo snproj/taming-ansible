@@ -40,13 +40,14 @@ module GrammarTypes.AnsibleGrammarTypes
         -- Task(..),
         -- Handler(..),
         -- Marker(..),
-        TH(..),
+        -- TH(..),
+        Task(..),
         Block(..),
         -- Rescue(..),
         -- Always(..),
         ModDecl(..),
-        TaskMarker(..),
-        HandlerMarker(..),
+        -- TaskMarker(..),
+        -- HandlerMarker(..),
         UID(..),
         -- BlockTask(..),
         -- RescueTask(..),
@@ -86,14 +87,14 @@ data NonEmptySet a = NonEmptySet a (Set a)
 data RootDir = RootDir {
     playbook :: NonEmpty Play,
     roledir :: Maybe (Map String Role),
-    looseTaskFiles :: Maybe (Map String [TH TaskMarker]) -- all loose files assumed to be tasks
+    looseTaskFiles :: Maybe (Map String [Task]) -- all loose files assumed to be tasks
 } deriving (Generic, Show, Eq, Ord)
 
 data Play = Play {
     hostPattern :: HostPattern,
     playAttributeSet :: PlayAttributeSet,
-    tasks :: [TH TaskMarker],
-    handlers :: [TH HandlerMarker],
+    tasks :: [Task],
+    handlers :: [Task],
     roleNames :: Maybe [String]
 } deriving (Generic, Show, Eq, Ord)
 
@@ -113,8 +114,8 @@ data HostPattern = UnionHosts HostPattern HostPattern
 -------------------------------------------
 -- TODO: Does not prevent multiple of the same directory! Find equivalent to Data.Set.NonEmpty!
 data Role = Role {
-    tasksDir :: Maybe (Map RoleSubDirFileName [TH TaskMarker]),
-    handlersDir :: Maybe (Map RoleSubDirFileName [TH HandlerMarker])
+    tasksDir :: Maybe (Map RoleSubDirFileName [Task]),
+    handlersDir :: Maybe (Map RoleSubDirFileName [Task])
 } deriving (Generic, Show, Eq, Ord)
 
 data RoleSubDirFileName = MainName
@@ -166,7 +167,7 @@ instance Hashable JBE_EXP
 -- data JBE_PRIM = JBE_PRIM_TRUE | JBE_PRIM_FALSE
 --     deriving (Generic, Show, Eq, Ord)
 -- instance Hashable JBE_PRIM
-data JBE_REG a = JBE_REG_R (TH a)
+data JBE_REG = JBE_REG_R String -- TODO: change to Task
     deriving (Generic, Show, Eq, Ord)
 instance Hashable JBE_REG
 data JBE_TOP = JBE_TOP_IS
@@ -273,14 +274,14 @@ instance Hashable KWLoop
 --         TASK AND HANDLER
 --
 -------------------------------------------
-data TaskMarker = TaskMarker
-data HandlerMarker = HandlerMarker
+-- data TaskMarker = TaskMarker
+-- data HandlerMarker = HandlerMarker
 
 data UID = SetUID String | UnsetUID
     deriving (Generic, Show, Eq, Ord)
 instance Hashable UID
 
-data TH a
+data Task
   = Atomic {
         thAtomicAttributeSet :: AtomicAttributeSet,
         thModDecl :: ModDecl,
@@ -288,19 +289,19 @@ data TH a
     }
   | ContainingBlock {
         thBlockAttributeSet :: BlockAttributeSet,
-        thBlock :: Block a,
+        thBlock :: Block,
         thUID :: UID
     }
   deriving (Generic, Show, Eq, Ord)
-instance Hashable (TH a)
+instance Hashable Task
 
 
-data Block a = Block {
-    blockMain :: NonEmpty (TH a),
-    rescue :: Maybe (NonEmpty (TH a)),
-    always :: Maybe (NonEmpty (TH a))
+data Block = Block {
+    blockMain :: NonEmpty Task,
+    rescue :: Maybe (NonEmpty Task),
+    always :: Maybe (NonEmpty Task)
 } deriving (Generic, Show, Eq, Ord)
-instance Hashable (Block a)
+instance Hashable Block
 
 -- data Block a = Block (NonEmpty (TH a)) (Maybe (Rescue a))
 --   deriving (Generic, Show, Eq, Ord)

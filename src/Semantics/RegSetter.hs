@@ -8,8 +8,8 @@ import Data.List.NonEmpty (fromList, toList)
 class REGSettable a where
     setReg :: a -> a
 
-instance REGSettable (TH a) where
-    setReg :: TH a -> TH a
+instance REGSettable Task where
+    setReg :: Task -> Task
     setReg (Atomic attSet modDecl (SetUID s)) =
         let reg = case atomicRegister attSet of
                 Just existingRegisterName -> Just existingRegisterName
