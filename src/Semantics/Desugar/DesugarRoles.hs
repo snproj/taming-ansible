@@ -22,15 +22,11 @@ desugarPlainRoleCalls (Play hp attSet ts hs rNames) = do
             -- sad code duplication for tasks and handlers
             let taskLists = mapMaybe getMainTasksFromRole jRoles
             let flattenedTaskLists = concat taskLists
-            let newTs = do
-                    ts'' <- ts
-                    return (flattenedTaskLists ++ ts'')
+            let newTs = flattenedTaskLists ++ ts
             -- sad code duplication for tasks and handlers
             let handlerLists = mapMaybe getMainHandlersFromRole jRoles
             let flattenedHandlerLists = concat handlerLists
-            let newHs = do
-                    hs'' <- hs
-                    return (flattenedHandlerLists ++ hs'')
+            let newHs = flattenedHandlerLists ++ hs
 
             return (Play hp attSet newTs newHs Nothing)
     return (fromMaybe (Play hp attSet ts hs Nothing) res)

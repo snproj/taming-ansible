@@ -17,10 +17,10 @@ buildUID UnsetUID _ _ = error "ERROR: buildUID was called with an UnsetUID as th
 
 zipper :: UID -> String -> Int ->TH a -> Reader UID (TH a)
 zipper parentUID s seqNum th =
-    let thUID = case th of
+    let _thUID = case th of
           Atomic _ _ uid' -> uid'
           ContainingBlock _ _ uid' -> uid'
-        indivUID = buildUID parentUID thUID (s ++ show seqNum)
+        indivUID = buildUID parentUID _thUID (s ++ show seqNum)
      in local (const indivUID) (setUID th)
 
 instance UIDSettable [TH a] where

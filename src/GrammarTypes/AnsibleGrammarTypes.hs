@@ -5,7 +5,6 @@
 module GrammarTypes.AnsibleGrammarTypes
     (
         RootDir(..),
-        Playbook(..),
         Play(..),
         HostPattern(..),
         Role(..),
@@ -13,16 +12,20 @@ module GrammarTypes.AnsibleGrammarTypes
         -- TasksFile(..),
         -- HandlersFile(..),
         RoleSubDirFileName(..),
-        JinjaElem(..),
+        -- JinjaElem(..),
+        JinjaPhrase(..),
+        JinjaStringElem(..),
         JBE_EXP(..),
-        JBE_PRIM(..),
+        -- JBE_PRIM(..),
         JBE_REG(..),
         JBE_TOP(..),
         JBE_OP(..),
         JBE_TEST(..),
         JBE_UNIMPL(..),
         Var(..),
-        AttributeSet(..),
+        PlayAttributeSet(..),
+        AtomicAttributeSet(..),
+        BlockAttributeSet(..),
         -- KWForceHandlers,
         -- KWNotify,
         KWLoop(..),
@@ -81,29 +84,18 @@ data NonEmptySet a = NonEmptySet a (Set a)
 --
 -------------------------------------------
 data RootDir = RootDir {
-    playbook :: Playbook,
+    playbook :: NonEmpty Play,
     roledir :: Maybe (Map String Role),
     looseTaskFiles :: Maybe (Map String [TH TaskMarker]) -- all loose files assumed to be tasks
 } deriving (Generic, Show, Eq, Ord)
 
--- data RoleDir = RoleDir (Maybe (Map String Role))
-
--- data LooseTaskFiles = LooseTaskFiles (Maybe (Map String [TH TaskMarker]))
-
--- data LooseHandlerFiles = LooseHandlerFiles (Maybe (Map String [TH HandlerMarker]))
-
-data Playbook = PlaybookDefinedHere (NonEmpty Play)
-    deriving (Generic, Show, Eq, Ord)
--- newtype ImportPlaybook = ImportPlaybook String -- TODO: should be path?
-
 data Play = Play {
     hostPattern :: HostPattern,
-    playAttributeSet :: AttributeSet,
-    tasks :: Maybe [TH TaskMarker],
-    handlers :: Maybe [TH HandlerMarker],
+    playAttributeSet :: PlayAttributeSet,
+    tasks :: [TH TaskMarker],
+    handlers :: [TH HandlerMarker],
     roleNames :: Maybe [String]
 } deriving (Generic, Show, Eq, Ord)
-
 
 data HostPattern = UnionHosts HostPattern HostPattern
     | SetdiffHosts HostPattern HostPattern
@@ -125,18 +117,6 @@ data Role = Role {
     handlersDir :: Maybe (Map RoleSubDirFileName [TH HandlerMarker])
 } deriving (Generic, Show, Eq, Ord)
 
--- data SumCompulsoryRoleDir where
---     SumCompulsoryRoleDir :: CompulsoryRoleDir a -> SumCompulsoryRoleDir
---     deriving (Generic, Show, Eq, Ord)
-
--- data CompulsoryRoleDir a = CompulsoryRoleDir (Map RoleSubDirFileName [TH a])
---     deriving (Generic, Show, Eq, Ord)
-
--- data CompulsoryRoleDir = CompulsoryRoleDir {
---     tasksDir :: Maybe (Map RoleSubDirFileName [TH TaskMarker]),
---     handlersDir :: Maybe (Map RoleSubDirFileName [TH HandlerMarker])
--- } deriving (Generic, Show, Eq, Ord)
-
 data RoleSubDirFileName = MainName
     | OtherName String
     deriving (Generic, Show, Eq, Ord)
@@ -154,28 +134,39 @@ data RoleSubDirFileName = MainName
 --
 -------------------------------------------
 
-data JinjaElem -- TODO: Formalize jinja lmao
-    = JustString String -- this should instead be resolved into stuff within jinja double brackets
-    -- | LoopTarget
-    | UnresolvedVarRef String
-    | JinjaBooleanExp JBE_EXP
+data JinjaStringElem = JSE_STRING String | JSE_UVR String
     deriving (Generic, Show, Eq, Ord)
-instance Hashable JinjaElem
+instance Hashable JinjaStringElem
+
+data JinjaPhrase
+    = AllEventuallyString [JinjaStringElem]
+    | JBEPhrase JBE_EXP
+    | SingletonUVR String
+    deriving (Generic, Show, Eq, Ord)
+instance Hashable JinjaPhrase
+
+-- data JinjaElem -- TODO: Formalize jinja lmao
+--     = JustString String -- this should instead be resolved into stuff within jinja double brackets
+--     | UnresolvedVarRef String
+--     | JinjaBooleanExp JBE_EXP
+--     deriving (Generic, Show, Eq, Ord)
+-- instance Hashable JinjaElem
 
 data JBE_EXP
     = JBE_EXP_REGTEST JBE_REG JBE_TOP JBE_TEST
     | JBE_EXP_BINARYOP JBE_EXP JBE_OP JBE_EXP
     | JBE_EXP_UNARYOP JBE_OP JBE_EXP
     | JBE_EXP_PARENEXP JBE_EXP
-    | JBE_EXP_PRIM JBE_PRIM
-    | JBE_EXP_UNIMPL JBE_UNIMPL
+    | JBE_EXP_PRIM Bool
+    | JBE_EXP_UVR String
+    | JBE_EXP_UNIMPL String
     deriving (Generic, Show, Eq, Ord)
 instance Hashable JBE_EXP
 
-data JBE_PRIM = JBE_PRIM_TRUE | JBE_PRIM_FALSE
-    deriving (Generic, Show, Eq, Ord)
-instance Hashable JBE_PRIM
-data JBE_REG = JBE_REG_R String
+-- data JBE_PRIM = JBE_PRIM_TRUE | JBE_PRIM_FALSE
+--     deriving (Generic, Show, Eq, Ord)
+-- instance Hashable JBE_PRIM
+data JBE_REG a = JBE_REG_R (TH a)
     deriving (Generic, Show, Eq, Ord)
 instance Hashable JBE_REG
 data JBE_TOP = JBE_TOP_IS
@@ -222,7 +213,7 @@ data Var
     | SimpleVarString String
     | SimpleVarInt Int
     | SimpleVarFloat Float
-    | VarContainingJinja [JinjaElem]
+    | VarContainingJinja JinjaPhrase
     deriving (Generic, Show, Eq, Ord)
 instance Hashable Var
 
@@ -231,31 +222,40 @@ instance Hashable Var
 --         ATTRIBUTES
 --
 -------------------------------------------
+data PlayAttributeSet = PlayAttributeSet {
+    playVars :: Maybe Var
+} deriving (Generic, Show, Eq, Ord)
+instance Hashable PlayAttributeSet
+
+data AtomicAttributeSet = AtomicAttributeSet {
+    atomicNotify :: Maybe Var,
+    atomicLoop :: Maybe KWLoop,
+    atomicWhen :: Var,
+    atomicVars :: Maybe Var,
+    atomicChangedWhen :: Maybe Var,
+    atomicFailedWhen :: Maybe Var,
+    atomicUntil :: Maybe Var,
+    atomicRetries :: Var,
+    atomicRegister :: Maybe String,
+    atomicIgnoreErrors :: Var,
+    atomicListen :: Maybe Var
+} deriving (Generic, Eq, Ord)
+instance Hashable AtomicAttributeSet
+
+instance Show AtomicAttributeSet where
+    show _ = "<ATTSET>"
+
 -- I've decided to sort out which attributes are valid for which grammar
 -- constructs in the semantics instead
-data AttributeSet = AttributeSet {
-    kwName :: Maybe String,
-    kwForceHandlers :: Maybe Var,
-    kwNotify :: Maybe Var,
-    kwLoop :: Maybe KWLoop,
-    kwWhen :: Var,
-    kwVars :: Maybe Var,
-    kwChangedWhen :: Maybe Var,
-    kwFailedWhen :: Maybe Var,
-    kwUntil :: Maybe Var,
-    kwRetries :: Maybe Var, -- even though some fields are compulsory for atomic tasks, they may be invalid for blocks, plays etc, and thus must have Maybe
-    kwRegister :: Maybe String,
-    kwIgnoreErrors :: Var,
-    kwListen :: Maybe String
+data BlockAttributeSet = BlockAttributeSet {
+    blockNotify :: Maybe Var,
+    blockWhen :: Var,
+    blockVars :: Maybe Var
 } deriving (Generic, Eq, Ord)
-instance Hashable AttributeSet
+instance Hashable BlockAttributeSet
 
-instance Show AttributeSet where
-    show :: AttributeSet -> String
-    show attSet = show $ kwWhen attSet 
-
-
-
+instance Show BlockAttributeSet where
+  show _ = "<ATTSET>"
 
 data KWLoop = KWLoop {
     loopList :: Var,
@@ -273,47 +273,25 @@ instance Hashable KWLoop
 --         TASK AND HANDLER
 --
 -------------------------------------------
--- class TaskOrHandler a
--- instance TaskOrHandler Task
--- instance TaskOrHandler Handler
-
--- might need to bring back TaskMarker if this recursive definition comes back
--- to bite us in the behind
-
--- class Marker a
--- instance Marker TaskMarker
--- data family Marker a
 data TaskMarker = TaskMarker
 data HandlerMarker = HandlerMarker
-
--- data instance Marker TaskMarker
--- data instance Marker HandlerMarker
--- newtype Task = Task TH TaskMarker
--- newtype Handler = Handler TH HandlerMarker
 
 data UID = SetUID String | UnsetUID
     deriving (Generic, Show, Eq, Ord)
 instance Hashable UID
 
--- data TH a
---     = Atomic AttributeSet ModDecl UID
---     | ContainingBlock AttributeSet (Block a) UID
---     deriving (Generic, Show, Eq, Ord)
--- instance Hashable (TH a)
-
 data TH a
   = Atomic {
-        thAttributeSet :: AttributeSet,
+        thAtomicAttributeSet :: AtomicAttributeSet,
         thModDecl :: ModDecl,
         thUID :: UID
     }
   | ContainingBlock {
-        thAttributeSet :: AttributeSet,
+        thBlockAttributeSet :: BlockAttributeSet,
         thBlock :: Block a,
         thUID :: UID
     }
   deriving (Generic, Show, Eq, Ord)
-
 instance Hashable (TH a)
 
 

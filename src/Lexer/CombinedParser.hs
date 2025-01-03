@@ -13,6 +13,7 @@ import Data.List.NonEmpty (nonEmpty, singleton, NonEmpty (..))
 -- import qualified Data.Text
 import Debug.Trace (trace, traceShow)
 import Data.Map (Map)
+import Text.Regex.TDFA.CorePattern (P(NonEmpty))
 
 parseRootDir :: String -> AnsibleDir -> RootDir
 parseRootDir pbName (AnsibleDir mst) = let
@@ -21,7 +22,7 @@ parseRootDir pbName (AnsibleDir mst) = let
                 AFile (AnsibleYAMLFile contents) -> contents
                 ADir _ -> error "ERROR: Playbook file name actually points to a directory!"
         Nothing -> error "ERROR: Playbook file name not found in root directory!"
-    pb = case eitherDecode (pack pbString) :: Either String Playbook of
+    pb = case eitherDecode (pack pbString) :: Either String (NonEmpty Play) of
             Left err -> error err
             Right pb' -> pb'
     -- _ = traceShow pb

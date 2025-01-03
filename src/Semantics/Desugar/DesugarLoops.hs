@@ -4,70 +4,15 @@
 module Semantics.Desugar.DesugarLoops where
 
 import GrammarTypes.AnsibleGrammarTypes
-import Data.Map (elems, Map, empty, insert, lookup, map, fromList)
+import Data.Map (elems, Map, empty, insert, lookup, map, fromList, singleton)
 import Control.Monad.Reader (Reader, ask, MonadTrans (lift), runReader, local)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust, catMaybes)
-import Data.List.NonEmpty (filter, intersperse, toList, NonEmpty ((:|)))
+import Data.List.NonEmpty (filter, intersperse, toList, NonEmpty ((:|)), fromList)
 import qualified Text.Regex.TDFA.CorePattern as Data.List
 import Control.Monad (zipWithM)
 import Semantics.UIDSetter (buildUID)
-
-data UVRResolve = UVRResolve String Var
-
-class Resolvable a where
-    resolveUVR :: a -> Reader UVRResolve a
-
-instance Resolvable JinjaElem where
-    resolveUVR jje = case jje of
-        JustString t -> return (JustString t)
-        UnresolvedVarRef n -> do
-            UVRResolve uvrName resolveValue <- ask
-            if uvrName == n
-                then return (JustString (show resolveValue))
-                else return (UnresolvedVarRef n)
-
-instance Resolvable [JinjaElem] where
-    resolveUVR :: [JinjaElem] -> Reader UVRResolve [JinjaElem]
-    resolveUVR = traverse resolveUVR
-
-jjeJustStringToString :: JinjaElem -> Maybe String
-jjeJustStringToString jje = case jje of
-    JustString s -> Just s
-    UnresolvedVarRef _ -> Nothing
-
-jjeAllResolvedToString :: [JinjaElem] -> Either [JinjaElem] String
-jjeAllResolvedToString jjes = let
-    mStrings = Prelude.map jjeJustStringToString jjes
-    in if all isJust mStrings
-        then Right $ concatMap fromJust mStrings
-        else Left jjes
-
-instance Resolvable [Var] where
-    resolveUVR :: [Var] -> Reader UVRResolve [Var]
-    resolveUVR = traverse resolveUVR
-
-instance Resolvable Var where
-    resolveUVR varThatMightContainUVR = case varThatMightContainUVR of
-        VarContainingJinja jjeVar -> do
-            inserted <- resolveUVR jjeVar
-            case jjeAllResolvedToString inserted of
-                Left jjes -> return (VarContainingJinja jjes)
-                Right s -> return (SimpleVarString s)
-        ListVar varList -> do
-            varList' <- resolveUVR varList
-            return (ListVar varList')
-        DictVar msv -> do
-            msv' <- traverse resolveUVR msv
-            return (DictVar msv')
-        SimpleVarBool b -> return (SimpleVarBool b)
-        SimpleVarFloat f -> return (SimpleVarFloat f)
-        SimpleVarInt i -> return (SimpleVarInt i)   
-        SimpleVarString s -> return (SimpleVarString s)
-
-instance Resolvable (Map String Var) where
-    resolveUVR :: Map String Var -> Reader UVRResolve (Map String Var)
-    resolveUVR = traverse resolveUVR
+import Semantics.StaticVarResolver (SymbolTable(SymbolTable), UVRResolvable (resolveContainedUVRs))
 
 unrollLoopBasic :: KWLoop -> ModDecl -> [ModDecl]
 unrollLoopBasic _kwLoop modDecl = let
@@ -75,14 +20,6 @@ unrollLoopBasic _kwLoop modDecl = let
         (ListVar vars) -> length vars
         _ -> error "ERROR: lpVals must be ListVar!"
     in replicate lpValLength modDecl
-
-instance Resolvable ModDecl where
-    resolveUVR :: ModDecl -> Reader UVRResolve ModDecl
-    resolveUVR modDecl = case modDecl of
-        (GenericModDecl _name msv) -> do
-            msv' <- resolveUVR msv
-            return (GenericModDecl _name msv')
-        _ -> error "ERROR: resolveUVR not implemented yet for non-generic modDecls!"
 
 resolveUnrolledModDeclWithLoopVar :: [ModDecl] -> Reader KWLoop [ModDecl]
 resolveUnrolledModDeclWithLoopVar mds = do
@@ -93,8 +30,8 @@ resolveUnrolledModDeclWithLoopVar mds = do
     let lpVar = case loopVar _kwLoop of
             (SimpleVarString s) -> s
             _ -> error "ERROR: lpVar must be SimpleVarString!"
-    let rUVR = Prelude.map (UVRResolve lpVar) lpVals
-    mapM (\(u, m) -> return $ runReader (resolveUVR m) u) (zip rUVR mds)
+    let rUVR = Prelude.map (SymbolTable . Data.Map.singleton lpVar) lpVals
+    mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
 
 resolveUnrolledModDeclWithPause :: [ModDecl] -> Reader KWLoop [ModDecl]
 resolveUnrolledModDeclWithPause mds = do
@@ -116,13 +53,47 @@ resolveUnrolledModDeclWithIndexVar mds = do
             Just _indexVar' -> case _indexVar' of
                 SimpleVarString s -> s
                 _ -> error "ERROR: _indexvar' must be SimpleVarString!"
-    let rUVR = Prelude.map (UVRResolve _indexVar . SimpleVarInt) [0..numberOfLoopVals-1]
-    mapM (\(u, m) -> return $ runReader (resolveUVR m) u) (zip rUVR mds)
+    let rUVR = Prelude.map ((SymbolTable . Data.Map.singleton _indexVar) . SimpleVarInt) [0 .. numberOfLoopVals-1]
+    mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
 
 createRegisterUnifierTask :: UID -> [TH a] -> TH a
 createRegisterUnifierTask origTHUID thl = let
-    regsList = mapMaybe (kwRegister . thAttributeSet) thl
+    regsList = mapMaybe (atomicRegister . thAtomicAttributeSet) thl
     regsAsVars = Prelude.map SimpleVarString regsList
-    in Atomic AttributeSet{} (GenericModDecl "unify_loop_ds_regs" (Data.Map.fromList [("loop_ds_task_regs", ListVar regsAsVars)])) (buildUID origTHUID UnsetUID "unifyregs")
+    in Atomic (thAtomicAttributeSet $ head thl) (GenericModDecl "unify_loop_ds_regs" (Data.Map.fromList [("loop_ds_task_regs", ListVar regsAsVars)])) (buildUID origTHUID UnsetUID "unifyregs")
 
+getReferencedRegsFromJBE :: JBE_EXP -> [JBE_REG]
+getReferencedRegsFromJBE jbe = case jbe of
+    JBE_EXP_REGTEST r _ _ -> [r]
+    JBE_EXP_BINARYOP e1 _ e2 -> getReferencedRegsFromJBE e1 ++ getReferencedRegsFromJBE e2
+    JBE_EXP_UNARYOP _ e -> getReferencedRegsFromJBE e
+    JBE_EXP_PARENEXP e -> getReferencedRegsFromJBE e
+    _ -> []
 
+getReferencedTHsFromWhen :: TH a -> [TH a]
+getReferencedTHsFromWhen (Atomic aas _ _) = let
+    w = atomicWhen aas
+    regs = 
+    in undefined
+
+unrollTH :: TH a -> [TH a]
+unrollTH (Atomic aas modDecl uid) = let
+    ml = atomicLoop aas
+    in case ml of
+        Nothing -> [Atomic aas modDecl uid]
+        Just l -> let
+            modDecls = unrollLoopBasic l modDecl
+            modDecls' = runReader (resolveUnrolledModDeclWithLoopVar modDecls) l
+            modDecls'' = runReader (resolveUnrolledModDeclWithIndexVar modDecls') l
+            in Prelude.map (\mdcl -> Atomic aas mdcl uid) modDecls''
+unrollTH (ContainingBlock bas blk uid) = let
+    bm = Data.List.NonEmpty.fromList $ concatMap unrollTH $ blockMain blk
+    r = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (rescue blk)
+    a = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (always blk)
+    in [ContainingBlock bas Block {blockMain=bm, rescue=r, always=a} uid]
+
+unrollLoopsInPlay :: Play -> Play
+unrollLoopsInPlay p = let
+    tl = concatMap unrollTH $ tasks p
+    hl = concatMap unrollTH $ handlers p
+    in p {tasks=tl, handlers=hl}

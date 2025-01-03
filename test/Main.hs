@@ -9,10 +9,10 @@ import Lexer.CombinedParser
 import Semantics.StaticVarResolver
 import Debug.Trace (trace, traceShow)
 import Control.Monad.Reader (runReader)
-import Data.Map (fromList, Map)
+import Data.Map (fromList, Map, empty)
 import Semantics.Desugar.DesugarLoops
 import Semantics.Desugar.DesugarRoles
-import Data.List.NonEmpty (head)
+import Data.List.NonEmpty (head, map)
 import qualified Text.Regex.TDFA.CorePattern as Data.List
 import Semantics.Desugar.DesugarImports (desugarImportsInPlay)
 import Semantics.UIDSetter
@@ -20,6 +20,7 @@ import Semantics.Desugar.DesugarBlocks (chainTogether, drawArrowsWithinBlock)
 import Data.Maybe (fromJust)
 import Semantics.RegSetter
 import Semantics.Desugar.DesugarBlocks
+import Semantics.StaticVarResolver (resolveContainedUVRs)
 
 testYaml :: IO ()
 testYaml = do
@@ -36,7 +37,7 @@ testSVR = do
     let res = eitherDecode json :: Either String (TH TaskMarker)
     let res' = case res of
             Left s -> error ""
-            Right t -> runReader (resolveTH t) (SymbolTable (fromList [
+            Right t -> runReader (resolveContainedUVRs t) (SymbolTable (fromList [
                 ("var1", SimpleVarString "resolved1"),
                 ("var2", SimpleVarString "resolved2"),
                 ("var3", SimpleVarString "resolved3")
@@ -49,7 +50,7 @@ testDSPlainRole = do
     (name, dir) <- gatherDir "/home/sunrise/research/testansibleproj"
     let root = parseRootDir "play" dir
     -- let (p, mmsr) = getPBMMSR root
-    let (PlaybookDefinedHere nep) = playbook root
+    let nep = playbook root
     let p = Data.List.NonEmpty.head nep
     let mmsr = roledir root
     let res = runReader (desugarPlainRoleCalls p) mmsr
@@ -68,7 +69,7 @@ testUnrollLoopForGenericMod = do
             Left s -> error "ERROR: Some error during parsing the task!"
             Right t -> case t of
                 (Atomic attSet modDecl _) -> let
-                    _kwLoop = case kwLoop attSet of
+                    _kwLoop = case atomicLoop attSet of
                         Nothing -> error ""
                         Just _kwLoop' -> _kwLoop'
                     basic = unrollLoopBasic _kwLoop modDecl
@@ -100,9 +101,9 @@ testDesugarImports = do
     print name
     print dir
     let root = parseRootDir "play" dir
-    let (PlaybookDefinedHere nep) = playbook root
+    let nep = playbook root
     let play = Data.List.NonEmpty.head nep
-    let res = runReader (desugarImportsInPlay play) (root, AttributeSet{})
+    let res = runReader (desugarImportsInPlay play) root
     print res
     return ()
 
@@ -110,7 +111,7 @@ testUIDSetting :: IO ()
 testUIDSetting = do
     (name, dir) <- gatherDir "/home/sunrise/research/testansibleproj"
     let root = parseRootDir "play" dir
-    let (PlaybookDefinedHere nep) = playbook root
+    let nep = playbook root
     let play = Data.List.NonEmpty.head nep
     let res = runReader (setUID play) (SetUID "")
     print res
@@ -120,14 +121,28 @@ testDrawArrows :: IO ()
 testDrawArrows = do
     (name, dir) <- gatherDir "/home/sunrise/research/testansibleproj"
     let root = parseRootDir "play" dir
-    let (PlaybookDefinedHere nep) = playbook root
+    let nep = playbook root
     let play = Data.List.NonEmpty.head nep
     let playWithUIDs = runReader (setUID play) (SetUID "")
     let playWithRegs = setReg playWithUIDs
-    let tasksWithRegs = fromJust $ tasks playWithRegs
+    let tasksWithRegs = tasks playWithRegs
     let b = tasksWithRegs !! 3
     let res = flattenBlocks $ chainTogether tasksWithRegs
     print res
+    return ()
+
+testWholeShebang :: String -> String -> IO ()
+testWholeShebang dirname playfilename = do
+    (name, dir) <- gatherDir dirname
+    let rd = parseRootDir playfilename dir
+    let pb = playbook rd
+    let pb' = Data.List.NonEmpty.map (\p -> runReader (desugarPlainRoleCalls p) (roledir rd)) pb
+    let pb'' = Data.List.NonEmpty.map (\p -> runReader (desugarImportsInPlay p) rd) pb'
+    let pb''' = Data.List.NonEmpty.map (\p -> runReader (resolveContainedUVRs p) (SymbolTable Data.Map.empty)) pb''
+    let pb'''' = Data.List.NonEmpty.map (\p -> runReader (setUID p) (SetUID "")) pb''' -- Data.List.NonEmpty.map unrollLoopsInPlay pb'''
+    let pb''''' = Data.List.NonEmpty.map setReg pb''''
+    let pb'''''' = Data.List.NonEmpty.map desugarBlocksInPlay pb'''''
+    let pb''''''' = Data.List.NonEmpty.map
     return ()
 
 main :: IO ()
@@ -135,7 +150,7 @@ main = do
     -- print "what"
     -- let s = traceShow "fucky boi" "l"
     -- print s
-    -- testParseRoot
+    testParseRoot
     -- testDirStacker
     -- testDSPlainRole
     -- testSVR

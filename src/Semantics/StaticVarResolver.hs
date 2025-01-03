@@ -1,219 +1,239 @@
 {-# LANGUAGE LambdaCase #-}
-module Semantics.StaticVarResolver where
+{-# LANGUAGE InstanceSigs #-}
+module Semantics.StaticVarResolver
+    (
+        SymbolTable(..),
+        UVRResolvable(..),
+    ) where
 import Control.Monad.Reader (Reader, MonadReader (..))
 import GrammarTypes.AnsibleGrammarTypes
 import Data.Map (Map, lookup, union)
 
 newtype SymbolTable = SymbolTable (Map String Var)
 
--- resolveJJUVR :: JinjaElem -> Reader SymbolTable JinjaElem
--- resolveJJUVR (UnresolvedVarRef s) = do
---     st <- ask
---     case Data.Map.lookup s st of
---         Just x -> return x
---         Nothing -> return 
--- resolveJJUVR _ = undefined
+-- resolveJJP :: 
 
--- getVarRefString :: JinjaElem -> Maybe String
--- getVarRefString (UnresolvedVarRef s) = Just s
--- getVarRefString _ = Nothing
+-- resolveJJE :: JinjaElem -> Reader SymbolTable (Either JinjaElem Var)
+-- resolveJJE (UnresolvedVarRef s) = do
+--     SymbolTable st <- ask
+--     return (case Data.Map.lookup s st of
+--         Just v -> Right v
+--         Nothing -> Left (UnresolvedVarRef s))
+-- resolveJJE jje = return $ Left jje
 
-resolveUVR :: JinjaElem -> Reader SymbolTable (Maybe Var)
-resolveUVR (UnresolvedVarRef s) = do
-    SymbolTable st <- ask
-    return (Data.Map.lookup s st)
-resolveUVR _ = return Nothing
+-- resolveJJEList :: [JinjaElem] -> Reader SymbolTable Var
+-- resolveJJEList jjes = let
+--     anyUVRs = any (\case {UnresolvedVarRef _ -> True; _ -> False}) jjes
+--     anyJustStrings = any (\case {JustString _ -> True; _ -> False}) jjes
+--     anyJBEs = any (\case JinjaBooleanExp _ -> True; _ -> False) jjes
+--     isSingletonList = length jjes == 1
+--     case (anyUVRs, anyJustStrings, anyJBEs, isSingletonList) of
+--         (False, True, False, True) -> undefined
+--     in undefined
 
-resolveVar :: Var -> Reader SymbolTable Var
-resolveVar (VarContainingJinja jjes) = do
-    uvrs <- mapM resolveUVR jjes
-    let res = eitherAnySingleVarOrCombinedStringVar uvrs jjes
-    return res
-    where
-        joinOnlyStrings :: [Var] -> Var
-        joinOnlyStrings [] = error "ERROR: Empty list in string containing JJE? This should not be possible!"
-        joinOnlyStrings (v : vs) = go "" (v : vs)
-            where
-                go :: String -> [Var] -> Var
-                go s [SimpleVarString s'] = SimpleVarString (s ++ s')
-                go s (SimpleVarString s' : vs') = go (s ++ s') vs'
-                go _ _ = error "ERROR: Encountered unexpected variable in multi-JJE JJEVar! Should all be strings!"
-        combineJustStringsAndResolvedUVRs :: Maybe Var -> JinjaElem -> Var
-        combineJustStringsAndResolvedUVRs mvar jje = case (mvar, jje) of
-            (Just resolved, UnresolvedVarRef _) -> resolved
-            (Nothing, JustString s) -> SimpleVarString s
-            (Nothing, UnresolvedVarRef s) -> VarContainingJinja [UnresolvedVarRef s]
-            _ -> error "ERROR: Unexpected resolution encountered!"
-        eitherAnySingleVarOrCombinedStringVar :: [Maybe Var] -> [JinjaElem] -> Var
-        eitherAnySingleVarOrCombinedStringVar mvars jjes' = let
-            zipped = zipWith combineJustStringsAndResolvedUVRs mvars jjes'
-            in case zipped of
-                [single] -> single -- can be any Var subtype; this is for constructs like `loop: "{{var1}}"`
-                (v:vs) -> joinOnlyStrings (v:vs) -- must give SimpleVarString! this is for constructs like `msg: "hi {{var1}}"`
-                [] -> error "ERROR: empty zip result???"
-resolveVar (DictVar msv) = do
-    msv' <- traverse resolveVar msv
-    return (DictVar msv')
-resolveVar (ListVar ls) = do
-    ls' <- traverse resolveVar ls
-    return (ListVar ls')
-resolveVar var = return var -- all SimpleVarX subtypes
+resolveJSE :: JinjaStringElem -> Reader SymbolTable JinjaStringElem
+resolveJSE jse = case jse of
+    JSE_STRING _ -> return jse
+    JSE_UVR s -> do
+        SymbolTable msv <- ask
+        case Data.Map.lookup s msv of
+            Just v -> return $ JSE_STRING $ show v
+            Nothing -> return jse
 
-resolveModDecl :: ModDecl -> Reader SymbolTable ModDecl
-resolveModDecl (GenericModDecl s msv) = do
-    resolvedMSV <- traverse resolveVar msv
-    return (GenericModDecl s resolvedMSV)
-resolveModDecl (ImportTasks v) = do
-    v' <- resolveVar v
-    return (ImportTasks v')
-resolveModDecl (IncludeTasks _apply _file) = do
-    _apply' <- traverse resolveVar _apply
-    _file' <- resolveVar _file
-    return (IncludeTasks _apply' _file')
-resolveModDecl (ImportRole _name _tasks_from _handlers_from) = do
-    _name' <- resolveVar _name
-    _tasks_from' <- resolveVar _tasks_from
-    _handlers_from' <- resolveVar _handlers_from
-    return (ImportRole _name' _tasks_from' _handlers_from')
-resolveModDecl (IncludeRole _apply _name _tasks_from _handlers_from) = do
-    _apply' <- traverse resolveVar _apply
-    _name' <- resolveVar _name
-    _tasks_from' <- resolveVar _tasks_from
-    _handlers_from' <- resolveVar _handlers_from
-    return (IncludeRole _apply' _name' _tasks_from' _handlers_from')
+resolveJBE :: JBE_EXP -> Reader SymbolTable JBE_EXP
+resolveJBE jbe = case jbe of
+    JBE_EXP_BINARYOP left op right -> JBE_EXP_BINARYOP <$> resolveJBE left <*> pure op <*> resolveJBE right
+    JBE_EXP_UNARYOP op term -> JBE_EXP_UNARYOP op <$> resolveJBE term
+    JBE_EXP_PARENEXP term -> JBE_EXP_PARENEXP <$> resolveJBE term
+    JBE_EXP_UVR s -> do
+        SymbolTable msv <- ask
+        case Data.Map.lookup s msv of
+            Just v -> return $ JBE_EXP_UNIMPL $ show v
+            Nothing -> return $ JBE_EXP_UVR s
+    x -> return x
 
-resolveKWLoop :: KWLoop -> Reader SymbolTable KWLoop
-resolveKWLoop (KWLoop _loopList _loopVar _indexVar _pause) = do
-    _loopList' <- resolveVar _loopList
-    _loopVar' <- resolveVar _loopVar
-    _indexVar' <- traverse resolveVar _indexVar
-    _pause' <- traverse resolveVar _pause
-    return (KWLoop _loopList' _loopVar' _indexVar' _pause')
+resolveJJP :: JinjaPhrase -> Reader SymbolTable Var
+resolveJJP (SingletonUVR s) = do
+    SymbolTable msv <- ask
+    case Data.Map.lookup s msv of
+        Just v -> return v
+        Nothing -> return $ VarContainingJinja $ SingletonUVR s
+resolveJJP (AllEventuallyString ss) = do
+    resolved <- traverse resolveJSE ss
+    return $ VarContainingJinja $ AllEventuallyString resolved
+resolveJJP (JBEPhrase jbe) = do
+    resolved <- resolveJBE jbe
+    return $ VarContainingJinja $ JBEPhrase resolved
 
-resolveAttributeSet :: AttributeSet -> Reader SymbolTable AttributeSet
-resolveAttributeSet (AttributeSet
-    _kwName
-    _kwForceHandlers
-    _kwNotify
-    _kwLoop
-    _kwWhen
-    _kwVars
-    _kwChangedWhen
-    _kwFailedWhen
-    _kwUntil
-    _kwRetries
-    _kwRegister
-    _kwIgnoreErrors
-    _kwListen) = do
-        _kwForceHandlers' <- traverse resolveVar _kwForceHandlers
-        _kwNotify' <- traverse resolveVar _kwNotify
-        _kwLoop' <- traverse resolveKWLoop _kwLoop
-        _kwWhen' <- resolveVar _kwWhen
-        _kwVars' <- traverse resolveVar _kwVars
-        _kwChangedWhen' <- traverse resolveVar _kwChangedWhen
-        _kwFailedWhen' <- traverse resolveVar _kwFailedWhen
-        _kwUntil' <- traverse resolveVar _kwUntil
-        _kwRetries' <- traverse resolveVar _kwRetries
-        _kwIgnoreErrors' <- resolveVar _kwIgnoreErrors
-        return (AttributeSet 
-            _kwName
-            _kwForceHandlers'
-            _kwNotify'
-            _kwLoop'
-            _kwWhen'
-            _kwVars'
-            _kwChangedWhen'
-            _kwFailedWhen'
-            _kwUntil'
-            _kwRetries'
-            _kwRegister
-            _kwIgnoreErrors'
-            _kwListen
-            )
+class UVRResolvable a where
+    resolveContainedUVRs :: a -> Reader SymbolTable a
 
--- resolveAlwaysHandler :: AlwaysHandler -> Reader SymbolTable AlwaysHandler
--- resolveAlwaysHandler (AlwaysHandler neHandler) = do
---     neHandler' <- traverse resolveHandler neHandler
---     return (AlwaysHandler neHandler')
+instance UVRResolvable Var where
+    resolveContainedUVRs :: Var -> Reader SymbolTable Var
+    resolveContainedUVRs (VarContainingJinja jjp) = resolveJJP jjp
+    -- resolveContainedUVRs (VarContainingJinja jjes) = do
+    --     uvrs <- mapM resolveJJE jjes
+    --     let res = eitherAnySingleVarOrCombinedStringVar uvrs jjes
+    --     return res
+    --     where
+    --         joinOnlyStrings :: [Var] -> Var
+    --         joinOnlyStrings [] = error "ERROR: Empty list in string containing JJE? This should not be possible!"
+    --         joinOnlyStrings (v : vs) = go "" (v : vs)
+    --             where
+    --                 go :: String -> [Var] -> Var
+    --                 go s [SimpleVarString s'] = SimpleVarString (s ++ s')
+    --                 go s (SimpleVarString s' : vs') = go (s ++ s') vs'
+    --                 go _ _ = error "ERROR: Encountered unexpected variable in multi-JJE JJEVar! Should all be strings!"
+    --         combineJustStringsAndResolvedUVRs :: Maybe Var -> JinjaElem -> Var
+    --         combineJustStringsAndResolvedUVRs mvar jje = case (mvar, jje) of
+    --             (Just resolved, UnresolvedVarRef _) -> resolved
+    --             (Nothing, JustString s) -> SimpleVarString s
+    --             (Nothing, UnresolvedVarRef s) -> VarContainingJinja [UnresolvedVarRef s]
+    --             _ -> error "ERROR: Unexpected resolution encountered!"
+    --         eitherAnySingleVarOrCombinedStringVar :: [Maybe Var] -> [JinjaElem] -> Var
+    --         eitherAnySingleVarOrCombinedStringVar mvars jjes' = let
+    --             zipped = zipWith combineJustStringsAndResolvedUVRs mvars jjes'
+    --             in case zipped of
+    --                 [single] -> single -- can be any Var subtype; this is for constructs like `loop: "{{var1}}"`
+    --                 (v:vs) -> joinOnlyStrings (v:vs) -- must give SimpleVarString! this is for constructs like `msg: "hi {{var1}}"`
+    --                 [] -> error "ERROR: empty zip result???"
+    resolveContainedUVRs (DictVar msv) = do
+        msv' <- traverse resolveContainedUVRs msv
+        return (DictVar msv')
+    resolveContainedUVRs (ListVar ls) = do
+        ls' <- traverse resolveContainedUVRs ls
+        return (ListVar ls')
+    resolveContainedUVRs var = return var -- all SimpleVarX subtypes
 
--- resolveRescueHandler :: RescueHandler -> Reader SymbolTable RescueHandler
--- resolveRescueHandler (RescueHandler neHandler mAlwaysHandler) = do
---     neHandler' <- traverse resolveHandler neHandler
---     mAlwaysHandler' <- traverse resolveAlwaysHandler mAlwaysHandler
---     return (RescueHandler neHandler' mAlwaysHandler')
+instance UVRResolvable ModDecl where
+    resolveContainedUVRs :: ModDecl -> Reader SymbolTable ModDecl
+    resolveContainedUVRs (GenericModDecl s msv) = do
+        resolvedMSV <- traverse resolveContainedUVRs msv
+        return (GenericModDecl s resolvedMSV)
+    resolveContainedUVRs (ImportTasks v) = do
+        v' <- resolveContainedUVRs v
+        return (ImportTasks v')
+    resolveContainedUVRs (IncludeTasks _apply _file) = do
+        _apply' <- traverse resolveContainedUVRs _apply
+        _file' <- resolveContainedUVRs _file
+        return (IncludeTasks _apply' _file')
+    resolveContainedUVRs (ImportRole _name _tasks_from _handlers_from) = do
+        _name' <- resolveContainedUVRs _name
+        _tasks_from' <- resolveContainedUVRs _tasks_from
+        _handlers_from' <- resolveContainedUVRs _handlers_from
+        return (ImportRole _name' _tasks_from' _handlers_from')
+    resolveContainedUVRs (IncludeRole _apply _name _tasks_from _handlers_from) = do
+        _apply' <- traverse resolveContainedUVRs _apply
+        _name' <- resolveContainedUVRs _name
+        _tasks_from' <- resolveContainedUVRs _tasks_from
+        _handlers_from' <- resolveContainedUVRs _handlers_from
+        return (IncludeRole _apply' _name' _tasks_from' _handlers_from')
 
--- resolveBlockHandler :: BlockHandler -> Reader SymbolTable BlockHandler
--- resolveBlockHandler (BlockHandler neHandler mRescueHandler) = do
---     neHandler' <- traverse resolveHandler neHandler
---     mRescueHandler' <- traverse resolveRescueHandler mRescueHandler
---     return (BlockHandler neHandler' mRescueHandler')
+instance UVRResolvable KWLoop where
+    resolveContainedUVRs :: KWLoop -> Reader SymbolTable KWLoop
+    resolveContainedUVRs (KWLoop _loopList _loopVar _indexVar _pause) = do
+        _loopList' <- resolveContainedUVRs _loopList
+        _loopVar' <- resolveContainedUVRs _loopVar
+        _indexVar' <- traverse resolveContainedUVRs _indexVar
+        _pause' <- traverse resolveContainedUVRs _pause
+        return (KWLoop _loopList' _loopVar' _indexVar' _pause')
 
--- resolveAlwaysTask :: Always a -> Reader SymbolTable (Always a)
--- resolveAlwaysTask (Always neTask) = do
---     neTask' <- traverse resolveTH neTask
---     return (Always neTask')
+instance UVRResolvable AtomicAttributeSet where
+    resolveContainedUVRs :: AtomicAttributeSet -> Reader SymbolTable AtomicAttributeSet
+    resolveContainedUVRs (AtomicAttributeSet
+        _atomicNotify
+        _atomicLoop
+        _atomicWhen
+        _atomicVars
+        _atomicChangedWhen
+        _atomicFailedWhen
+        _atomicUntil
+        _atomicRetries
+        _atomicRegister
+        _atomicIgnoreErrors
+        _atomicListen) = do
+            _atomicNotify' <- traverse resolveContainedUVRs _atomicNotify
+            _atomicLoop' <- traverse resolveContainedUVRs _atomicLoop
+            _atomicWhen' <- resolveContainedUVRs _atomicWhen
+            _atomicVars' <- traverse resolveContainedUVRs _atomicVars
+            _atomicChangedWhen' <- traverse resolveContainedUVRs _atomicChangedWhen
+            _atomicFailedWhen' <- traverse resolveContainedUVRs _atomicFailedWhen
+            _atomicUntil' <- traverse resolveContainedUVRs _atomicUntil
+            _atomicRetries' <- resolveContainedUVRs _atomicRetries
+            _atomicIgnoreErrors' <- resolveContainedUVRs _atomicIgnoreErrors
+            return (AtomicAttributeSet 
+                _atomicNotify'
+                _atomicLoop'
+                _atomicWhen'
+                _atomicVars'
+                _atomicChangedWhen'
+                _atomicFailedWhen'
+                _atomicUntil'
+                _atomicRetries'
+                _atomicRegister
+                _atomicIgnoreErrors'
+                _atomicListen
+                )
 
--- resolveRescueTask :: Rescue a -> Reader SymbolTable (Rescue a)
--- resolveRescueTask (Rescue neTask mAlwaysTask) = do
---     neTask' <- traverse resolveTH neTask
---     mAlwaysTask' <- traverse resolveAlwaysTask mAlwaysTask
---     return (Rescue neTask' mAlwaysTask')
+instance UVRResolvable BlockAttributeSet where
+    resolveContainedUVRs :: BlockAttributeSet -> Reader SymbolTable BlockAttributeSet
+    resolveContainedUVRs (BlockAttributeSet
+        _blockNotify
+        _blockWhen
+        _blockVars    ) = do
+            _blockNotify' <- traverse resolveContainedUVRs _blockNotify
+            _blockWhen' <- resolveContainedUVRs _blockWhen
+            _blockVars' <- traverse resolveContainedUVRs _blockVars
+            return (BlockAttributeSet
+                _blockNotify'
+                _blockWhen'
+                _blockVars'
+                )
 
--- resolveBlockTask :: Block a -> Reader SymbolTable (Block a)
--- resolveBlockTask (Block neTask mRescueTask) = do
---     neTask' <- traverse resolveTH neTask
---     mRescueTask' <- traverse resolveRescueTask mRescueTask
---     return (Block neTask' mRescueTask')
+instance UVRResolvable PlayAttributeSet where
+    resolveContainedUVRs :: PlayAttributeSet -> Reader SymbolTable PlayAttributeSet
+    resolveContainedUVRs (PlayAttributeSet
+        _playVars
+        ) = do
+            _playVars' <- traverse resolveContainedUVRs _playVars
+            return (PlayAttributeSet
+                _playVars'
+                )
 
-resolveBlockTask :: Block a -> Reader SymbolTable (Block a)
-resolveBlockTask (Block _blockMain _rescue _always) = do
-    _blockMain' <- traverse resolveTH _blockMain
-    _rescue' <- traverse (traverse resolveTH) _rescue
-    _always' <- traverse (traverse resolveTH) _always
-    return (Block _blockMain' _rescue' _always')
+instance UVRResolvable (Block a) where
+    resolveContainedUVRs :: Block a -> Reader SymbolTable (Block a)
+    resolveContainedUVRs (Block _blockMain _rescue _always) = do
+        _blockMain' <- traverse resolveContainedUVRs _blockMain
+        _rescue' <- traverse (traverse resolveContainedUVRs) _rescue
+        _always' <- traverse (traverse resolveContainedUVRs) _always
+        return (Block _blockMain' _rescue' _always')
 
-resolveTH :: TH a -> Reader SymbolTable (TH a)
-resolveTH (Atomic attSet modDecl uid) = do
-    attSet' <- resolveAttributeSet attSet
-    let newScopeAddons = kwVars attSet'
-    modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
-    return (Atomic attSet' modDecl' uid)
-resolveTH (ContainingBlock attSet blockTask uid) = do
-    attSet' <- resolveAttributeSet attSet
-    let newScopeAddons = kwVars attSet'
-    blockTask' <- maybeWithNewScope newScopeAddons resolveBlockTask blockTask
-    return (ContainingBlock attSet' blockTask' uid)
+instance UVRResolvable (TH a) where
+    resolveContainedUVRs :: TH a -> Reader SymbolTable (TH a)
+    resolveContainedUVRs (Atomic attSet modDecl uid) = do
+        attSet' <- resolveContainedUVRs attSet
+        let newScopeAddons = atomicVars attSet'
+        modDecl' <- maybeWithNewScope newScopeAddons resolveContainedUVRs modDecl
+        return (Atomic attSet' modDecl' uid)
+    resolveContainedUVRs (ContainingBlock attSet blockTask uid) = do
+        attSet' <- resolveContainedUVRs attSet
+        let newScopeAddons = blockVars attSet'
+        blockTask' <- maybeWithNewScope newScopeAddons resolveContainedUVRs blockTask
+        return (ContainingBlock attSet' blockTask' uid)
 
--- resolveHandler :: Handler -> Reader SymbolTable Handler
--- resolveHandler (AtomicHandler attSet modDecl) = do
---     attSet' <- resolveAttributeSet attSet
---     let newScopeAddons = kwVars attSet'
---     modDecl' <- maybeWithNewScope newScopeAddons resolveModDecl modDecl
---     return (AtomicHandler attSet' modDecl')
--- resolveHandler (HandlerContainingABlock attSet blockHandler) = do
---     attSet' <- resolveAttributeSet attSet
---     let newScopeAddons = kwVars attSet'
---     blockHandler' <- maybeWithNewScope newScopeAddons resolveBlockHandler blockHandler
---     return (HandlerContainingABlock attSet' blockHandler')
-
-
-resolvePlay :: Play -> Reader SymbolTable Play
-resolvePlay (Play
-    _hostPattern
-    _attributeSet
-    _tasks
-    _handlers
-    _roleNames) = do
-        _attributeSet' <- resolveAttributeSet _attributeSet
-        let newScopeAddons = kwVars _attributeSet'
-        _tasks' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveTH)) _tasks
-        _handlers' <- traverse (traverse (maybeWithNewScope newScopeAddons resolveTH)) _handlers
-        return (Play _hostPattern _attributeSet' _tasks' _handlers' _roleNames)
-
-resolvePlaybook :: Playbook -> Reader SymbolTable Playbook
-resolvePlaybook (PlaybookDefinedHere nePlay) = do
-    nePlay' <- traverse resolvePlay nePlay
-    return (PlaybookDefinedHere nePlay')
+instance UVRResolvable Play where
+    resolveContainedUVRs :: Play -> Reader SymbolTable Play
+    resolveContainedUVRs (Play
+        _hostPattern
+        _attributeSet
+        _tasks
+        _handlers
+        _roleNames) = do
+            _attributeSet' <- resolveContainedUVRs _attributeSet
+            let newScopeAddons = playVars _attributeSet'
+            _tasks' <- traverse (maybeWithNewScope newScopeAddons resolveContainedUVRs) _tasks
+            _handlers' <- traverse (maybeWithNewScope newScopeAddons resolveContainedUVRs) _handlers
+            return (Play _hostPattern _attributeSet' _tasks' _handlers' _roleNames)
 
 -- resolveCompulsoryRoleDir :: CompulsoryRoleDir -> Reader SymbolTable CompulsoryRoleDir
 -- resolveCompulsoryRoleDir (TasksDir mnt) = do
