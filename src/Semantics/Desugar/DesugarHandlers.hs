@@ -18,16 +18,21 @@ import Data.Map (Map, empty, fromList, unionWith, lookup)
 
 getNotifyCond :: Task -> JBE_EXP
 getNotifyCond th = let
-    reg = (fromJust . atomicRegister . thAtomicAttributeSet) th
+    uid = case th of
+        (Atomic _ _ uid') -> uid'
+        (ContainingBlock _ _ uid') -> uid'
     in JBE_EXP_BINARYOP
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_DEFINED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_DEFINED)
         JBE_OP_AND
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_CHANGED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_CHANGED)
 
 varToListOfStrings :: Var -> [String]
 varToListOfStrings (ListVar ls) = concatMap varToListOfStrings ls
 varToListOfStrings (SimpleVarString s) = [s]
 varToListOfStrings _ = error ""
+
+desugarHandlersInPlay :: Play -> Play
+desugarHandlersInPlay p = p {tasks=desugarHandlers(tasks p, handlers p), handlers = []}
 
 -- desugarHandlers :: ([TH TaskMarker], [TH HandlerMarker]) -> [TH TaskMarker]
 desugarHandlers :: ([Task], [Task]) -> [Task]
@@ -70,9 +75,9 @@ desugarHandlers (tl, hl) = let
                     in foldl (unionWith (++)) empty ms
         -- updateHandlerWhen :: TH HandlerMarker -> Map (TH HandlerMarker) [TH TaskMarker] -> TH HandlerMarker
         updateHandlerWhen :: Task -> Map Task [Task] -> Task
-        updateHandlerWhen handler mht = let
-            ts = fromJust $ Data.Map.lookup handler mht
-            in updateHandlerWhen' handler ts
+        updateHandlerWhen handler mht = case Data.Map.lookup handler mht of
+            Nothing -> handler
+            Just ts -> updateHandlerWhen' handler ts
             where
                 -- updateHandlerWhen' :: TH HandlerMarker -> [TH TaskMarker] -> TH HandlerMarker
                 updateHandlerWhen' :: Task -> [Task] -> Task

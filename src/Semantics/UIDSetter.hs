@@ -3,6 +3,10 @@
 module Semantics.UIDSetter where
 
 import GrammarTypes.AnsibleGrammarTypes
+    ( Block(Block, always, blockMain, rescue),
+      Task(ContainingBlock, Atomic),
+      UID(..),
+      Play(handlers, tasks) )
 import Control.Monad.Reader (Reader, MonadReader (ask), local)
 import Data.List.NonEmpty (toList, fromList)
 import Control.Monad (zipWithM)
@@ -11,8 +15,8 @@ class UIDSettable a where
     setUID :: a -> Reader UID a
 
 buildUID :: UID -> UID -> String -> UID
-buildUID (SetUID s1) UnsetUID s2 = SetUID (s1 ++ "_" ++ s2)
-buildUID (SetUID _) (SetUID _) _ = error "ERROR: buildUID was called on a SetUID as the child!"
+buildUID (SetUID s1) _ s2 = SetUID (s1 ++ "_" ++ s2)
+-- buildUID (SetUID _) (SetUID _) _ = error "ERROR: buildUID was called on a SetUID as the child!"
 buildUID UnsetUID _ _ = error "ERROR: buildUID was called with an UnsetUID as the parent!"
 
 zipper :: UID -> String -> Int -> Task -> Reader UID Task
@@ -62,8 +66,11 @@ instance UIDSettable Task where
 instance UIDSettable Play where
     setUID :: Play -> Reader UID Play
     setUID p = do
-        _tasks <- traverse (local (const (SetUID "tasks")) . setUID) (tasks p)
-        _handlers <- traverse (local (const (SetUID "handlers")) . setUID) (handlers p)
+        let sequenceNumbers = [0..]
+        -- _tasks <- traverse (local (const (SetUID "tasks")) . setUID) (tasks p)
+        _tasks <- zipWithM (zipper (SetUID "") "tasks") sequenceNumbers (tasks p)
+        -- _handlers <- traverse (local (const (SetUID "handlers")) . setUID) (handlers p)
+        _handlers <- zipWithM (zipper (SetUID "") "handlers") sequenceNumbers (handlers p)
         return p {tasks=_tasks, handlers=_handlers}
 
 

@@ -23,12 +23,12 @@ import Data.Hashable (hash)
 --                     Nothing -> hash
 
 getSuccessIndicator :: Task -> JBE_EXP
-getSuccessIndicator (Atomic attSet _ _) = let
-    reg = fromJust $ atomicRegister attSet
+getSuccessIndicator (Atomic attSet _ uid) = let
+    -- reg = fromJust $ atomicRegister attSet
     in JBE_EXP_BINARYOP
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_DEFINED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_DEFINED)
         JBE_OP_AND
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_SUCCEEDED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_SUCCEEDED)
 getSuccessIndicator (ContainingBlock _ block _) = let
     lastB = getSuccessIndicator $ last $ toList $ blockMain block
     lastR = (getSuccessIndicator . last . toList <$> rescue block)
@@ -37,12 +37,12 @@ getSuccessIndicator (ContainingBlock _ block _) = let
         Nothing -> lastB
 
 getFailedIndicator :: Task -> JBE_EXP
-getFailedIndicator (Atomic attSet _ _) = let
+getFailedIndicator (Atomic attSet _ uid) = let
     reg = fromJust $ atomicRegister attSet
     in JBE_EXP_BINARYOP
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_DEFINED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_DEFINED)
         JBE_OP_AND
-        (JBE_EXP_REGTEST (JBE_REG_R reg) JBE_TOP_IS JBE_TEST_FAILED)
+        (JBE_EXP_REGTEST (JBE_REG_R uid) JBE_TOP_IS JBE_TEST_FAILED)
 getFailedIndicator (ContainingBlock _ block _) = let
     in case rescue block of
         Just rescue' -> getFailedIndicator $ last $ toList rescue'

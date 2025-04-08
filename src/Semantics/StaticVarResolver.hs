@@ -71,32 +71,6 @@ class UVRResolvable a where
 instance UVRResolvable Var where
     resolveContainedUVRs :: Var -> Reader SymbolTable Var
     resolveContainedUVRs (VarContainingJinja jjp) = resolveJJP jjp
-    -- resolveContainedUVRs (VarContainingJinja jjes) = do
-    --     uvrs <- mapM resolveJJE jjes
-    --     let res = eitherAnySingleVarOrCombinedStringVar uvrs jjes
-    --     return res
-    --     where
-    --         joinOnlyStrings :: [Var] -> Var
-    --         joinOnlyStrings [] = error "ERROR: Empty list in string containing JJE? This should not be possible!"
-    --         joinOnlyStrings (v : vs) = go "" (v : vs)
-    --             where
-    --                 go :: String -> [Var] -> Var
-    --                 go s [SimpleVarString s'] = SimpleVarString (s ++ s')
-    --                 go s (SimpleVarString s' : vs') = go (s ++ s') vs'
-    --                 go _ _ = error "ERROR: Encountered unexpected variable in multi-JJE JJEVar! Should all be strings!"
-    --         combineJustStringsAndResolvedUVRs :: Maybe Var -> JinjaElem -> Var
-    --         combineJustStringsAndResolvedUVRs mvar jje = case (mvar, jje) of
-    --             (Just resolved, UnresolvedVarRef _) -> resolved
-    --             (Nothing, JustString s) -> SimpleVarString s
-    --             (Nothing, UnresolvedVarRef s) -> VarContainingJinja [UnresolvedVarRef s]
-    --             _ -> error "ERROR: Unexpected resolution encountered!"
-    --         eitherAnySingleVarOrCombinedStringVar :: [Maybe Var] -> [JinjaElem] -> Var
-    --         eitherAnySingleVarOrCombinedStringVar mvars jjes' = let
-    --             zipped = zipWith combineJustStringsAndResolvedUVRs mvars jjes'
-    --             in case zipped of
-    --                 [single] -> single -- can be any Var subtype; this is for constructs like `loop: "{{var1}}"`
-    --                 (v:vs) -> joinOnlyStrings (v:vs) -- must give SimpleVarString! this is for constructs like `msg: "hi {{var1}}"`
-    --                 [] -> error "ERROR: empty zip result???"
     resolveContainedUVRs (DictVar msv) = do
         msv' <- traverse resolveContainedUVRs msv
         return (DictVar msv')
@@ -151,7 +125,9 @@ instance UVRResolvable AtomicAttributeSet where
         _atomicRetries
         _atomicRegister
         _atomicIgnoreErrors
-        _atomicListen) = do
+        _atomicListen
+        -- _
+        ) = do
             _atomicNotify' <- traverse resolveContainedUVRs _atomicNotify
             _atomicLoop' <- traverse resolveContainedUVRs _atomicLoop
             _atomicWhen' <- resolveContainedUVRs _atomicWhen
@@ -173,6 +149,7 @@ instance UVRResolvable AtomicAttributeSet where
                 _atomicRegister
                 _atomicIgnoreErrors'
                 _atomicListen
+                -- Nothing
                 )
 
 instance UVRResolvable BlockAttributeSet where
@@ -180,7 +157,9 @@ instance UVRResolvable BlockAttributeSet where
     resolveContainedUVRs (BlockAttributeSet
         _blockNotify
         _blockWhen
-        _blockVars    ) = do
+        _blockVars
+        -- _
+        ) = do
             _blockNotify' <- traverse resolveContainedUVRs _blockNotify
             _blockWhen' <- resolveContainedUVRs _blockWhen
             _blockVars' <- traverse resolveContainedUVRs _blockVars
@@ -188,6 +167,7 @@ instance UVRResolvable BlockAttributeSet where
                 _blockNotify'
                 _blockWhen'
                 _blockVars'
+                -- Nothing
                 )
 
 instance UVRResolvable PlayAttributeSet where

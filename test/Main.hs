@@ -21,6 +21,7 @@ import Data.Maybe (fromJust)
 import Semantics.RegSetter
 import Semantics.Desugar.DesugarBlocks
 import Semantics.StaticVarResolver (resolveContainedUVRs)
+import Semantics.Desugar.DesugarHandlers (desugarHandlersInPlay)
 
 testYaml :: IO ()
 testYaml = do
@@ -142,7 +143,10 @@ testWholeShebang dirname playfilename = do
     let pb'''' = Data.List.NonEmpty.map (\p -> runReader (setUID p) (SetUID "")) pb''' -- Data.List.NonEmpty.map unrollLoopsInPlay pb'''
     let pb''''' = Data.List.NonEmpty.map setReg pb''''
     let pb'''''' = Data.List.NonEmpty.map desugarBlocksInPlay pb'''''
-    let pb''''''' = Data.List.NonEmpty.map
+    let pb''''''' = Data.List.NonEmpty.map unrollLoopsInPlay pb''''''
+    let pb'''''''' = Data.List.NonEmpty.map desugarHandlersInPlay pb'''''''
+    -- print pb'
+    print pb''''''''
     return ()
 
 main :: IO ()
@@ -150,7 +154,7 @@ main = do
     -- print "what"
     -- let s = traceShow "fucky boi" "l"
     -- print s
-    testParseRoot
+    -- testParseRoot
     -- testDirStacker
     -- testDSPlainRole
     -- testSVR
@@ -158,5 +162,6 @@ main = do
     -- testUnrollLoopForGenericMod
     -- testDesugarImports
     -- testUIDSetting
-    testDrawArrows
+    -- testDrawArrows
+    testWholeShebang "/home/sunrise/research/testansibleproj" "play"
     return ()

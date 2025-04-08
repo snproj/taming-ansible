@@ -167,7 +167,7 @@ instance Hashable JBE_EXP
 -- data JBE_PRIM = JBE_PRIM_TRUE | JBE_PRIM_FALSE
 --     deriving (Generic, Show, Eq, Ord)
 -- instance Hashable JBE_PRIM
-data JBE_REG = JBE_REG_R String -- TODO: change to Task
+data JBE_REG = JBE_REG_R UID -- TODO: change to Task
     deriving (Generic, Show, Eq, Ord)
 instance Hashable JBE_REG
 data JBE_TOP = JBE_TOP_IS
@@ -240,11 +240,12 @@ data AtomicAttributeSet = AtomicAttributeSet {
     atomicRegister :: Maybe String,
     atomicIgnoreErrors :: Var,
     atomicListen :: Maybe Var
-} deriving (Generic, Eq, Ord)
+    -- atomicImportUID :: Maybe UID
+} deriving (Generic, Eq, Ord, Show)
 instance Hashable AtomicAttributeSet
 
-instance Show AtomicAttributeSet where
-    show _ = "<ATTSET>"
+-- instance Show AtomicAttributeSet where
+--     show _ = "<ATTSET>"
 
 -- I've decided to sort out which attributes are valid for which grammar
 -- constructs in the semantics instead
@@ -252,6 +253,7 @@ data BlockAttributeSet = BlockAttributeSet {
     blockNotify :: Maybe Var,
     blockWhen :: Var,
     blockVars :: Maybe Var
+    -- blockImportUID :: Maybe UID
 } deriving (Generic, Eq, Ord)
 instance Hashable BlockAttributeSet
 

@@ -11,10 +11,11 @@ class REGSettable a where
 instance REGSettable Task where
     setReg :: Task -> Task
     setReg (Atomic attSet modDecl (SetUID s)) =
-        let reg = case atomicRegister attSet of
-                Just existingRegisterName -> Just existingRegisterName
-                Nothing -> Just $ s ++ "_reg"
-        in Atomic attSet {atomicRegister = reg} modDecl (SetUID s)
+        Atomic attSet {atomicRegister = Just s} modDecl (SetUID s)
+        -- let reg = case atomicRegister attSet of
+        --         Just existingRegisterName -> Just existingRegisterName
+        --         Nothing -> Just $ s ++ "_reg"
+        -- in Atomic attSet {atomicRegister = reg} modDecl (SetUID s)
     setReg (Atomic _ _ UnsetUID) = error "ERROR: Tried to assign register to Atomic, but Atomic did not yet have UID set!"
     setReg (ContainingBlock attSet (Block _blockMain _rescue _always) uid) = let
         f = fromList . map setReg . toList

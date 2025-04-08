@@ -3,16 +3,21 @@
 module Semantics.Desugar.DesugarImports where
 
 import GrammarTypes.AnsibleGrammarTypes
-import Control.Monad.Reader (Reader, ask, local)
+import Control.Monad.Reader (Reader, ask, local, runReader)
 import Data.Map (lookup)
 import Data.List.NonEmpty (filter, toList, fromList, map)
 import Data.Maybe (fromMaybe)
 import qualified Data.Map as Map
+import Semantics.UIDSetter (setUID)
 
 getRSDFN :: String -> RoleSubDirFileName
 getRSDFN s = case s of
     "main" -> MainName
     other -> OtherName other
+
+assignImportUIDs :: String -> [Task] -> [Task]
+assignImportUIDs s ts = runReader (setUID ts) (SetUID s)
+
 
 getTasksFromRole :: Var -> Var -> Reader RootDir (Maybe [Task])
 getTasksFromRole (SimpleVarString roleName) (SimpleVarString taskFileName) = do
@@ -41,7 +46,7 @@ getHandlersFromRole (SimpleVarString roleName) (SimpleVarString handlerFileName)
                 Nothing -> return Nothing
                 Just mnt -> case Data.Map.lookup (getRSDFN handlerFileName) mnt of
                     Nothing -> return Nothing
-                    Just hl -> return (Just hl)
+                    Just hl -> return (Just (assignImportUIDs (roleName ++ handlerFileName) hl))
 getHandlersFromRole _ _ = error ""
 
 getTasksFromLooseFile :: Var -> Reader RootDir (Maybe [Task])
@@ -151,6 +156,9 @@ collateGetImportsFromTasks tl = do
 desugarImports :: ([Task], [Task]) -> Reader RootDir ([Task], [Task])
 desugarImports (tl, hl) = do
     (expandedTL, handlersFromTasks) <- collateGetImportsFromTasks tl
+    -- rd <- ask
+
+    -- handlersFromRoleSectionOfPlay 
     let hl' = appendHandlersWithDupRemoval hl handlersFromTasks
     return (expandedTL, hl')
 
@@ -167,7 +175,14 @@ desugarImportsInPlay play = do
         roleNames=roleNames play
     }
 
+getUIDFromTask :: Task -> UID
+getUIDFromTask (Atomic _ _ uid) = uid
+getUIDFromTask (ContainingBlock _ _ uid) = uid
+
 appendHandlersWithDupRemoval :: [Task] -> [Task] -> [Task]
 appendHandlersWithDupRemoval handlerList newHandlers = let
-    remDup = Prelude.filter (`notElem` newHandlers) handlerList
+    existingUIDs = Prelude.map getUIDFromTask handlerList
+    newUIDs = Prelude.map getUIDFromTask newHandlers
+    remDupUIDs = Prelude.filter (`notElem` newUIDs) existingUIDs
+    remDup = Prelude.filter (\h -> (getUIDFromTask h) `elem` remDupUIDs) handlerList
     in remDup ++ newHandlers
