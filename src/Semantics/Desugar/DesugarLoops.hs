@@ -8,151 +8,157 @@ import Data.Map (elems, Map, empty, insert, lookup, map, fromList, singleton, to
 import Control.Monad.Reader (Reader, ask, MonadTrans (lift), runReader, local)
 import Control.Monad.Trans.Maybe (MaybeT(..))
 import Data.Maybe (fromJust, mapMaybe, fromMaybe, isJust, catMaybes)
-import Data.List.NonEmpty (filter, intersperse, toList, NonEmpty ((:|)), fromList)
 import qualified Text.Regex.TDFA.CorePattern as Data.List
 import Control.Monad (zipWithM)
 import Semantics.UIDSetter (buildUID)
 import Semantics.StaticVarResolver (SymbolTable(SymbolTable), UVRResolvable (resolveContainedUVRs))
+import Semantics.Desugar.DesugarBlocks (getSuccessPath)
 
-unrollLoopBasic :: KWLoop -> ModDecl -> [ModDecl]
-unrollLoopBasic _kwLoop modDecl = let
-    lpValLength = case loopList _kwLoop of
-        (ListVar vars) -> length vars
-        _ -> error "ERROR: lpVals must be ListVar!"
-    in replicate lpValLength modDecl
+createLoopGoalkeeper :: [Task] -> Task
+createLoopGoalkeeper ts = Atomic {
+        atomicAttributeSet = atomicAttributeSet t,
+        modDecl = GenericModDecl "_lgk" (fromList (map (\i -> ("s"++fromInteger i,getSuccessPath ))))
+    }
 
-resolveUnrolledModDeclWithLoopVar :: [ModDecl] -> Reader KWLoop [ModDecl]
-resolveUnrolledModDeclWithLoopVar mds = do
-    _kwLoop <- ask
-    let lpVals = case loopList _kwLoop of
-            (ListVar vars) -> vars
-            _ -> error "ERROR: lpVals must be ListVar!"
-    let lpVar = case loopVar _kwLoop of
-            (SimpleVarString s) -> s
-            _ -> error "ERROR: lpVar must be SimpleVarString!"
-    let rUVR = Prelude.map (SymbolTable . Data.Map.singleton lpVar) lpVals
-    mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
+-- unrollLoopBasic :: KWLoop -> ModDecl -> [ModDecl]
+-- unrollLoopBasic _kwLoop modDecl = let
+--     lpValLength = case loopList _kwLoop of
+--         (ListVar vars) -> length vars
+--         _ -> error "ERROR: lpVals must be ListVar!"
+--     in replicate lpValLength modDecl
 
-resolveUnrolledModDeclWithPause :: [ModDecl] -> Reader KWLoop [ModDecl]
-resolveUnrolledModDeclWithPause mds = do
-    _kwLoop <- ask
-    let pauseSeconds = case pause _kwLoop of
-            Nothing -> error "ERROR: Called unroll loop with pause, but task does not have pause!"
-            Just pauseSeconds' -> pauseSeconds'
-    let pauseMod = GenericModDecl "GENERATED_pause" (Data.Map.fromList [("seconds", pauseSeconds)])
-    return (Data.List.NonEmpty.toList (intersperse pauseMod (head mds :| tail mds)))
+-- resolveUnrolledModDeclWithLoopVar :: [ModDecl] -> Reader KWLoop [ModDecl]
+-- resolveUnrolledModDeclWithLoopVar mds = do
+--     _kwLoop <- ask
+--     let lpVals = case loopList _kwLoop of
+--             (ListVar vars) -> vars
+--             _ -> error "ERROR: lpVals must be ListVar!"
+--     let lpVar = case loopVar _kwLoop of
+--             (SimpleVarString s) -> s
+--             _ -> error "ERROR: lpVar must be SimpleVarString!"
+--     let rUVR = Prelude.map (SymbolTable . Data.Map.singleton lpVar) lpVals
+--     mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
 
-resolveUnrolledModDeclWithIndexVar :: [ModDecl] -> Reader KWLoop [ModDecl]
-resolveUnrolledModDeclWithIndexVar mds = do
-    _kwLoop <- ask
-    let numberOfLoopVals = case loopList _kwLoop of
-            (ListVar vars) -> length vars
-            _ -> error "ERROR: lpVals must be ListVar!"
-    let _indexVar = case indexVar _kwLoop of
-            Nothing -> error "ERROR: Called unroll loop with indexvar, but task does not have indexvar!"
-            Just _indexVar' -> case _indexVar' of
-                SimpleVarString s -> s
-                _ -> error "ERROR: _indexvar' must be SimpleVarString!"
-    let rUVR = Prelude.map ((SymbolTable . Data.Map.singleton _indexVar) . SimpleVarInt) [0 .. numberOfLoopVals-1]
-    mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
+-- resolveUnrolledModDeclWithPause :: [ModDecl] -> Reader KWLoop [ModDecl]
+-- resolveUnrolledModDeclWithPause mds = do
+--     _kwLoop <- ask
+--     let pauseSeconds = case pause _kwLoop of
+--             Nothing -> error "ERROR: Called unroll loop with pause, but task does not have pause!"
+--             Just pauseSeconds' -> pauseSeconds'
+--     let pauseMod = GenericModDecl "GENERATED_pause" (Data.Map.fromList [("seconds", pauseSeconds)])
+--     return (Data.List.NonEmpty.toList (intersperse pauseMod (head mds :| tail mds)))
 
-createRegisterUnifierTask :: UID -> [Task] -> Task
-createRegisterUnifierTask origTHUID thl = let
-    regsList = mapMaybe (atomicRegister . thAtomicAttributeSet) thl
-    regsAsVars = Prelude.map SimpleVarString regsList
-    in Atomic (thAtomicAttributeSet $ head thl) (GenericModDecl "unify_loop_ds_regs" (Data.Map.fromList [("loop_ds_task_regs", ListVar regsAsVars)])) (getUnifyRegUID origTHUID)
+-- resolveUnrolledModDeclWithIndexVar :: [ModDecl] -> Reader KWLoop [ModDecl]
+-- resolveUnrolledModDeclWithIndexVar mds = do
+--     _kwLoop <- ask
+--     let numberOfLoopVals = case loopList _kwLoop of
+--             (ListVar vars) -> length vars
+--             _ -> error "ERROR: lpVals must be ListVar!"
+--     let _indexVar = case indexVar _kwLoop of
+--             Nothing -> error "ERROR: Called unroll loop with indexvar, but task does not have indexvar!"
+--             Just _indexVar' -> case _indexVar' of
+--                 SimpleVarString s -> s
+--                 _ -> error "ERROR: _indexvar' must be SimpleVarString!"
+--     let rUVR = Prelude.map ((SymbolTable . Data.Map.singleton _indexVar) . SimpleVarInt) [0 .. numberOfLoopVals-1]
+--     mapM (\(u, m) -> return $ runReader (resolveContainedUVRs m) u) (zip rUVR mds)
 
-getUnifyRegUID :: UID -> UID
-getUnifyRegUID origTHUID = buildUID origTHUID UnsetUID "unifyregs"
+-- createRegisterUnifierTask :: UID -> [Task] -> Task
+-- createRegisterUnifierTask origTHUID thl = let
+--     regsList = mapMaybe (atomicRegister . thAtomicAttributeSet) thl
+--     regsAsVars = Prelude.map SimpleVarString regsList
+--     in Atomic (thAtomicAttributeSet $ head thl) (GenericModDecl "unify_loop_ds_regs" (Data.Map.fromList [("loop_ds_task_regs", ListVar regsAsVars)])) (getUnifyRegUID origTHUID)
 
-getReferencedUIDsFromJBE :: JBE_EXP -> [UID]
-getReferencedUIDsFromJBE jbe = case jbe of
-    JBE_EXP_REGTEST (JBE_REG_R uid) _ _ -> [uid]
-    JBE_EXP_BINARYOP e1 _ e2 -> getReferencedUIDsFromJBE e1 ++ getReferencedUIDsFromJBE e2
-    JBE_EXP_UNARYOP _ e -> getReferencedUIDsFromJBE e
-    JBE_EXP_PARENEXP e -> getReferencedUIDsFromJBE e
-    _ -> []
+-- getUnifyRegUID :: UID -> UID
+-- getUnifyRegUID origTHUID = buildUID origTHUID UnsetUID "unifyregs"
 
-applyToRegs :: (JBE_REG -> JBE_REG) -> JBE_EXP -> JBE_EXP
-applyToRegs regf jbe = case jbe of
-    JBE_EXP_REGTEST reg top test -> JBE_EXP_REGTEST (regf reg) top test
-    JBE_EXP_BINARYOP e1 op e2 -> JBE_EXP_BINARYOP (applyToRegs regf e1) op (applyToRegs regf e2)
-    JBE_EXP_UNARYOP op e -> JBE_EXP_UNARYOP op (applyToRegs regf e)
-    JBE_EXP_PARENEXP e -> JBE_EXP_PARENEXP (applyToRegs regf e)
-    x -> x
+-- getReferencedUIDsFromJBE :: JBE_EXP -> [UID]
+-- getReferencedUIDsFromJBE jbe = case jbe of
+--     JBE_EXP_REGTEST (JBE_REG_R uid) _ _ -> [uid]
+--     JBE_EXP_BINARYOP e1 _ e2 -> getReferencedUIDsFromJBE e1 ++ getReferencedUIDsFromJBE e2
+--     JBE_EXP_UNARYOP _ e -> getReferencedUIDsFromJBE e
+--     JBE_EXP_PARENEXP e -> getReferencedUIDsFromJBE e
+--     _ -> []
 
-replaceWhen :: Map UID UID -> Task -> Task
-replaceWhen muu (Atomic aas modDecl uid) = let
-    VarContainingJinja (JBEPhrase jbe) = atomicWhen aas
-    w' = VarContainingJinja (JBEPhrase (replaceReg muu jbe))
-    in Atomic aas {atomicWhen= w'} modDecl uid
-replaceWhen muu (ContainingBlock bas blk uid) = let
-    VarContainingJinja (JBEPhrase jbe) = blockWhen bas
-    w' = VarContainingJinja (JBEPhrase (replaceReg muu jbe))
-    in ContainingBlock bas {blockWhen = w'} blk uid
+-- applyToRegs :: (JBE_REG -> JBE_REG) -> JBE_EXP -> JBE_EXP
+-- applyToRegs regf jbe = case jbe of
+--     JBE_EXP_REGTEST reg top test -> JBE_EXP_REGTEST (regf reg) top test
+--     JBE_EXP_BINARYOP e1 op e2 -> JBE_EXP_BINARYOP (applyToRegs regf e1) op (applyToRegs regf e2)
+--     JBE_EXP_UNARYOP op e -> JBE_EXP_UNARYOP op (applyToRegs regf e)
+--     JBE_EXP_PARENEXP e -> JBE_EXP_PARENEXP (applyToRegs regf e)
+--     x -> x
 
-replaceReg :: Map UID UID -> JBE_EXP -> JBE_EXP
-replaceReg muu jbe = let
-    ufs = Prelude.map (\(key, value) -> \x -> if x == key then value else x) (Data.Map.toList muu)
-    rfs = Prelude.map applyToReg ufs
-    jbe' = foldl (\acc f -> applyToRegs f acc) jbe rfs
-    in jbe'
-    where
-        applyToReg :: (UID -> UID) -> (JBE_REG -> JBE_REG)
-        applyToReg uf (JBE_REG_R uid) = JBE_REG_R (uf uid)
+-- replaceWhen :: Map UID UID -> Task -> Task
+-- replaceWhen muu (Atomic aas modDecl uid) = let
+--     VarContainingJinja (JBEPhrase jbe) = atomicWhen aas
+--     w' = VarContainingJinja (JBEPhrase (replaceReg muu jbe))
+--     in Atomic aas {atomicWhen= w'} modDecl uid
+-- replaceWhen muu (ContainingBlock bas blk uid) = let
+--     VarContainingJinja (JBEPhrase jbe) = blockWhen bas
+--     w' = VarContainingJinja (JBEPhrase (replaceReg muu jbe))
+--     in ContainingBlock bas {blockWhen = w'} blk uid
 
-getReferencedTHsFromWhen :: Task -> Reader (Map UID Task) [Task]
-getReferencedTHsFromWhen t = do
-    let VarContainingJinja (JBEPhrase w) = case t of
-            Atomic aas _ _ -> atomicWhen aas
-            ContainingBlock bas _ _ -> blockWhen bas
-    let uids = getReferencedUIDsFromJBE w
-    mut <- ask
-    let ts = mapMaybe (`Data.Map.lookup` mut) uids
-    return ts
+-- replaceReg :: Map UID UID -> JBE_EXP -> JBE_EXP
+-- replaceReg muu jbe = let
+--     ufs = Prelude.map (\(key, value) -> \x -> if x == key then value else x) (Data.Map.toList muu)
+--     rfs = Prelude.map applyToReg ufs
+--     jbe' = foldl (\acc f -> applyToRegs f acc) jbe rfs
+--     in jbe'
+--     where
+--         applyToReg :: (UID -> UID) -> (JBE_REG -> JBE_REG)
+--         applyToReg uf (JBE_REG_R uid) = JBE_REG_R (uf uid)
 
-unrollTH :: Task -> [Task]
-unrollTH (Atomic aas modDecl uid) = let
-    ml = atomicLoop aas
-    in case ml of
-        Nothing -> [Atomic aas modDecl uid]
-        Just l -> let
-            modDecls = unrollLoopBasic l modDecl
-            modDecls' = runReader (resolveUnrolledModDeclWithLoopVar modDecls) l
-            modDecls'' = runReader (resolveUnrolledModDeclWithIndexVar modDecls') l
-            in Prelude.map (\mdcl -> Atomic aas mdcl uid) modDecls''
-unrollTH (ContainingBlock bas blk uid) = let
-    bm = Data.List.NonEmpty.fromList $ concatMap unrollTH $ blockMain blk
-    r = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (rescue blk)
-    a = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (always blk)
-    in [ContainingBlock bas Block {blockMain=bm, rescue=r, always=a} uid]
+-- getReferencedTHsFromWhen :: Task -> Reader (Map UID Task) [Task]
+-- getReferencedTHsFromWhen t = do
+--     let VarContainingJinja (JBEPhrase w) = case t of
+--             Atomic aas _ _ -> atomicWhen aas
+--             ContainingBlock bas _ _ -> blockWhen bas
+--     let uids = getReferencedUIDsFromJBE w
+--     mut <- ask
+--     let ts = mapMaybe (`Data.Map.lookup` mut) uids
+--     return ts
 
-getLoopyTasks :: [Task] -> [Task]
-getLoopyTasks = Prelude.filter isLoopy
-    where
-    isLoopy :: Task -> Bool
-    isLoopy = isJust . atomicLoop . thAtomicAttributeSet
+-- unrollTH :: Task -> [Task]
+-- unrollTH (Atomic aas modDecl uid) = let
+--     ml = atomicLoop aas
+--     in case ml of
+--         Nothing -> [Atomic aas modDecl uid]
+--         Just l -> let
+--             modDecls = unrollLoopBasic l modDecl
+--             modDecls' = runReader (resolveUnrolledModDeclWithLoopVar modDecls) l
+--             modDecls'' = runReader (resolveUnrolledModDeclWithIndexVar modDecls') l
+--             in Prelude.map (\mdcl -> Atomic aas mdcl uid) modDecls''
+-- unrollTH (ContainingBlock bas blk uid) = let
+--     bm = Data.List.NonEmpty.fromList $ concatMap unrollTH $ blockMain blk
+--     r = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (rescue blk)
+--     a = fmap (Data.List.NonEmpty.fromList . concatMap unrollTH) (always blk)
+--     in [ContainingBlock bas Block {blockMain=bm, rescue=r, always=a} uid]
 
-getUIDFromTask :: Task -> UID
-getUIDFromTask (Atomic _ _ uid) = uid
-getUIDFromTask (ContainingBlock _ _ uid) = uid
+-- getLoopyTasks :: [Task] -> [Task]
+-- getLoopyTasks = Prelude.filter isLoopy
+--     where
+--     isLoopy :: Task -> Bool
+--     isLoopy = isJust . atomicLoop . thAtomicAttributeSet
 
-correctReferencesToLoopyTasks :: [Task] -> [Task] -> [Task]
-correctReferencesToLoopyTasks loopies ts = let
-    loopyUIDs = Prelude.map getUIDFromTask loopies
-    muu = Data.Map.fromList $ Prelude.map (\u -> (u, getUnifyRegUID u)) loopyUIDs
-    corrected = Prelude.map (replaceWhen muu) ts
-    in corrected
+-- getUIDFromTask :: Task -> UID
+-- getUIDFromTask (Atomic _ _ uid) = uid
+-- getUIDFromTask (ContainingBlock _ _ uid) = uid
 
-unrollLoopsInPlay :: Play -> Play
-unrollLoopsInPlay p = let
-    ts = tasks p
-    hs = handlers p
-    loopies = getLoopyTasks (ts ++ hs)
-    uts = concatMap unrollTH ts
-    uhs = concatMap unrollTH hs
-    cts = correctReferencesToLoopyTasks loopies uts
-    chs = correctReferencesToLoopyTasks loopies uhs
-    in p {tasks=cts, handlers=chs}
+-- correctReferencesToLoopyTasks :: [Task] -> [Task] -> [Task]
+-- correctReferencesToLoopyTasks loopies ts = let
+--     loopyUIDs = Prelude.map getUIDFromTask loopies
+--     muu = Data.Map.fromList $ Prelude.map (\u -> (u, getUnifyRegUID u)) loopyUIDs
+--     corrected = Prelude.map (replaceWhen muu) ts
+--     in corrected
+
+-- unrollLoopsInPlay :: Play -> Play
+-- unrollLoopsInPlay p = let
+--     ts = tasks p
+--     hs = handlers p
+--     loopies = getLoopyTasks (ts ++ hs)
+--     uts = concatMap unrollTH ts
+--     uhs = concatMap unrollTH hs
+--     cts = correctReferencesToLoopyTasks loopies uts
+--     chs = correctReferencesToLoopyTasks loopies uhs
+--     in p {tasks=cts, handlers=chs}
 
 

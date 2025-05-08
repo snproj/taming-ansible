@@ -12,8 +12,9 @@ import Data.ByteString.Lazy.Char8 (pack)
 import Data.List.NonEmpty (nonEmpty, singleton, NonEmpty (..))
 -- import qualified Data.Text
 import Debug.Trace (trace, traceShow)
-import Data.Map (Map)
+import Data.Map (Map, empty)
 import Text.Regex.TDFA.CorePattern (P(NonEmpty))
+import Data.Maybe (fromMaybe)
 
 parseRootDir :: String -> AnsibleDir -> RootDir
 parseRootDir pbName (AnsibleDir mst) = let
@@ -22,7 +23,7 @@ parseRootDir pbName (AnsibleDir mst) = let
                 AFile (AnsibleYAMLFile contents) -> contents
                 ADir _ -> error "ERROR: Playbook file name actually points to a directory!"
         Nothing -> error "ERROR: Playbook file name not found in root directory!"
-    pb = case eitherDecode (pack pbString) :: Either String (NonEmpty Play) of
+    pb = case eitherDecode (pack pbString) :: Either String [Play] of
             Left err -> error err
             Right pb' -> pb'
     -- _ = traceShow pb
@@ -45,9 +46,9 @@ parseRootDir pbName (AnsibleDir mst) = let
         return (Map.map parseTaskListFromAFile convToAYF) :: Maybe (Map String [Task])
     in RootDir {
         playbook=pb,
-        roledir=roles',
-        looseTaskFiles=_looseTaskFiles   
-        }
+        roledir=fromMaybe Data.Map.empty roles',
+        looseTaskFiles=fromMaybe Data.Map.empty _looseTaskFiles   
+    }
 
 parseRoleFromADir :: AnsibleDir -> Role
 parseRoleFromADir (AnsibleDir mst) = let
@@ -58,27 +59,22 @@ parseRoleFromADir (AnsibleDir mst) = let
     handlerDir = Map.lookup "handlers" mst
     handlerCRD = do
         parseHandlersDir <$> handlerDir
-    
-    -- necrd = case (taskCRD, handlerCRD) of
-    --     (Nothing, Nothing) -> error "ERROR: Neither a tasks dir nor a handlers dir exists in the role! Must have at least one!"
-    --     (Just t, Nothing) -> singleton t
-    --     (Nothing, Just h) -> singleton h
-    --     (Just t, Just h) -> t :| [h]
+
     in Role {
-        tasksDir=taskCRD,
-        handlersDir=handlerCRD
+        tasksDir=fromMaybe Data.Map.empty taskCRD,
+        handlersDir=fromMaybe Data.Map.empty handlerCRD
     }
 
 
-parseTasksDir :: AnsibleFSThing -> Map RoleSubDirFileName [Task]
+parseTasksDir :: AnsibleFSThing -> Map String [Task]
 parseTasksDir (ADir (AnsibleDir adir)) = let
     gotTasks = Map.map (\athing -> case athing of
         ADir _ -> error ""
         AFile afile -> parseTaskListFromAFile afile) adir
-    gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
-    in gotRSDFN
+    -- gotRSDFN = Map.mapKeys stringToRSDFN gotTasks
+    in gotTasks
 
-parseHandlersDir :: AnsibleFSThing -> Map RoleSubDirFileName [Task]
+parseHandlersDir :: AnsibleFSThing -> Map String [Task]
 parseHandlersDir (ADir (AnsibleDir adir)) =
   let gotHandlers =
         Map.map
@@ -87,8 +83,8 @@ parseHandlersDir (ADir (AnsibleDir adir)) =
               AFile afile -> parseHandlerListFromAFile afile
           )
           adir
-      gotRSDFN = Map.mapKeys stringToRSDFN gotHandlers
-   in gotRSDFN
+    --   gotRSDFN = Map.mapKeys stringToRSDFN gotHandlers
+   in gotHandlers
 
 -- parseCRDFromADir :: String -> AnsibleFSThing -> Maybe (Map RoleSubDirFileName [TH TaskMarker])
 -- parseCRDFromADir s (ADir (AnsibleDir adir)) = case s of
@@ -107,11 +103,11 @@ parseHandlersDir (ADir (AnsibleDir adir)) =
 --     _ -> error "ERROR: Subdirectory type of Role not supported!"
 -- parseCRDFromADir s (AFile _) = error ("ERROR: " ++ s ++ " must be a directory!")
 
-stringToRSDFN :: String -> RoleSubDirFileName
-stringToRSDFN s = case s of
-    "main" -> MainName
-    -- "main.yaml" -> MainName
-    _ -> OtherName s
+-- stringToRSDFN :: String -> RoleSubDirFileName
+-- stringToRSDFN s = case s of
+--     "main" -> MainName
+--     -- "main.yaml" -> MainName
+--     _ -> OtherName s
 
 parseTaskListFromAFile :: AnsibleYAMLFile -> [Task]
 parseTaskListFromAFile (AnsibleYAMLFile contents) = case eitherDecode (pack contents) :: Either String [Task] of

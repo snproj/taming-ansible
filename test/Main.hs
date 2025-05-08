@@ -152,7 +152,6 @@ testWholeShebang dirname playfilename = do
 main :: IO ()
 main = do
     -- print "what"
-    -- let s = traceShow "fucky boi" "l"
     -- print s
     -- testParseRoot
     -- testDirStacker
