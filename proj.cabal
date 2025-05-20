@@ -62,7 +62,12 @@ library
                       Lexer.DirectoryStacker,
                       Lexer.YAMLConverter,
                       Lexer.CombinedParser,
-                      GrammarTypes.AnsibleGrammarTypes,
+                      GrammarTypes.AnsibleH,
+                      GrammarTypes.AnsibleMin,
+                      GrammarTypes.BBFS,
+                      GrammarTypes.BBFSInfra,
+                      GrammarTypes.HToMin,
+                      GrammarTypes.TBBFS,
                       Semantics.Desugar.DesugarRoles,
                       Semantics.Desugar.DesugarLoops,
                       Semantics.Desugar.DesugarHandlers,
@@ -70,7 +75,14 @@ library
                       Semantics.Desugar.DesugarImports,
                       Semantics.StaticVarResolver,
                       Semantics.UIDSetter,
-                      Semantics.RegSetter
+                      Semantics.RegSetter,
+                      MinToBBFS.MinToBBFS,
+                      MinToBBFS.WhenTransformation,
+                      MinToBBFS.IgnoreErrorTransformation,
+                      TBBFSToBBFS.TBBFSToBBFS,
+                      SymbolicExecution.SymbolicExecution,
+                      SymbolicExecution.BBFSSymSem,
+                      SymbolicExecution.Utils
 
     -- Modules included in this library but not exported.
     -- other-modules:
@@ -94,7 +106,9 @@ library
                       mtl,
                       transformers,
                       parsec ^>= 3.1.17.0,
-                      hashable
+                      hashable,
+                      split,
+                      PropLogic ^>= 0.9.0.4
 
     -- Directories containing source files.
     hs-source-dirs:   src
@@ -166,4 +180,6 @@ test-suite taming-ansible-test
         mtl,
         transformers,
         parsec ^>= 3.1.17.0,
-        hashable
+        hashable,
+        split,
+        PropLogic ^>= 0.9.0.4

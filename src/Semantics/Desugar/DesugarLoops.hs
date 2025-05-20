@@ -3,7 +3,7 @@
 {-# LANGUAGE InstanceSigs #-}
 module Semantics.Desugar.DesugarLoops where
 
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 import Data.Map (elems, Map, empty, insert, lookup, map, fromList, singleton, toList)
 import Control.Monad.Reader (Reader, ask, MonadTrans (lift), runReader, local)
 import Control.Monad.Trans.Maybe (MaybeT(..))
@@ -12,13 +12,55 @@ import qualified Text.Regex.TDFA.CorePattern as Data.List
 import Control.Monad (zipWithM)
 import Semantics.UIDSetter (buildUID)
 import Semantics.StaticVarResolver (SymbolTable(SymbolTable), UVRResolvable (resolveContainedUVRs))
-import Semantics.Desugar.DesugarBlocks (getSuccessPath)
+import Semantics.Desugar.DesugarBlocks (getSetUID)
 
-createLoopGoalkeeper :: [Task] -> Task
-createLoopGoalkeeper ts = Atomic {
+
+
+getResolutions :: Task -> [SymbolTable]
+getResolutions t = case t of
+    Atomic {} -> let
+        _kwLoop = fromJust $ atomicLoop $ atomicAttributeSet t
+        loopPairs = zip (loopList _kwLoop) [0..]
+        SimpleVarString _loopVarString = loopVar _kwLoop
+        _indexVarString = case indexVar _kwLoop of
+            Nothing -> "DUMMY"
+            Just (SimpleVarString s) -> s
+        in Prelude.map (\x -> createIndivSymbolTables x _loopVarString _indexVarString) loopPairs
+    Blocktask {} -> error "ERROR: blocktask cannot contain loop!"
+    where
+        createIndivSymbolTables :: (Var, Int) -> String -> String -> SymbolTable
+        createIndivSymbolTables (currLoopItem, currIdx) itemTemplateName idxTemplateName = SymbolTable (fromList [
+            (itemTemplateName, currLoopItem),
+            (idxTemplateName, SimpleVarString $ show currIdx)
+            ])
+
+adjustUIDs :: [Task] -> [Task]
+adjustUIDs ts = zipWith (\t i -> t {uid=buildUID (uid t) ("loop" ++ show i)}) ts [0..]
+
+getUnrolled :: Task -> [Task]
+getUnrolled t = case t of
+    Atomic {} -> let
+        symbolTablesPerUnroll = getResolutions t
+        unrolls = Prelude.map (runReader (resolveContainedUVRs t)) symbolTablesPerUnroll
+        in adjustUIDs unrolls
+    Blocktask {} -> error "ERROR: blocktask cannot contain loop!"
+
+createLoopGoalkeeper :: Task -> [Task] -> Task
+createLoopGoalkeeper t ts = Atomic {
         atomicAttributeSet = atomicAttributeSet t,
-        modDecl = GenericModDecl "_lgk" (fromList (map (\i -> ("s"++fromInteger i,getSuccessPath ))))
+        modDecl = GenericModDecl "_lgk" (fromList (zipWith (\i ct -> ("s"++ show i, SimpleVarString (getSetUID ct))) [0..] ts)),
+        uid = uid t
     }
+
+rewriteRuleLoop :: Task -> [Task]
+rewriteRuleLoop t = let
+    unrolled = getUnrolled t
+    in unrolled ++ [createLoopGoalkeeper t unrolled]
+
+
+    -- where
+    --     createParams :: [Task] -> Map String Var
+    --     createParams ts = fromList
 
 -- unrollLoopBasic :: KWLoop -> ModDecl -> [ModDecl]
 -- unrollLoopBasic _kwLoop modDecl = let

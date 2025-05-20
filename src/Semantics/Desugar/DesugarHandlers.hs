@@ -1,11 +1,39 @@
--- {-# LANGUAGE LambdaCase #-}
--- module Semantics.Desugar.DesugarHandlers where
+{-# LANGUAGE LambdaCase #-}
+module Semantics.Desugar.DesugarHandlers where
 
--- import GrammarTypes.AnsibleGrammarTypes
--- import Semantics.Desugar.DesugarBlocks (updateWhen, updateWhenTH)
+import GrammarTypes.AnsibleH
+import Semantics.Desugar.DesugarBlocks (updateWhen)
 -- import Data.List.NonEmpty (fromList, toList)
--- import Data.Maybe (fromJust, mapMaybe)
--- import Data.Map (Map, empty, fromList, unionWith, lookup)
+import Data.Maybe (fromJust, mapMaybe, fromMaybe)
+import Data.Map (Map, empty, fromList, unionWith, lookup)
+import Data.List (intersect)
+
+rewriteRuleHandler :: Play -> Play
+rewriteRuleHandler p = p {
+    tasks = t',
+    handlers = []
+}
+    where
+        t' = tasks p ++ h2t
+        h2t = Prelude.map notify2when (handlers p)
+        notify2when :: Task -> Task
+        notify2when h = h {
+            atomicAttributeSet = (atomicAttributeSet h) {
+                atomicWhen = JBE_EXP_BINARYOP
+                    (atomicWhen (atomicAttributeSet h))
+                    JBE_OP_AND
+                    (getW h)
+            }
+        }
+        getW :: Task -> JBE_EXP
+        getW h = foldl1 (`JBE_EXP_BINARYOP` JBE_OP_OR) (maybe [] (map (\t -> JBE_EXP_REGTEST (uid t) JBE_TEST_DEFINED)) (Data.Map.lookup h mht))
+        mht = fromList [
+            (_h, [_t]) |
+            _h <- handlers p,
+            _t <- tasks p,
+            (not . null) ((atomicListen . atomicAttributeSet) _h `intersect` (atomicNotify . atomicAttributeSet) _t)
+            ]
+
 
 -- -- handlerToTask :: TH HandlerMarker -> TH TaskMarker
 -- -- handlerToTask (Atomic x y z) = Atomic x y z

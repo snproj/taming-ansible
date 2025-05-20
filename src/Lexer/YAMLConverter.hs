@@ -17,7 +17,7 @@ import Data.Aeson.KeyMap (toList, lookup, filterWithKey, toList, keys, union, in
 import Data.List ((\\))
 import qualified Data.Vector as V
 import qualified Data.Set as Set
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 import Data.List.NonEmpty (NonEmpty (..), nonEmpty, singleton, fromList)
 import Control.Applicative ((<|>))
 import Text.Regex.TDFA ((=~), AllTextMatches (..))
@@ -25,7 +25,7 @@ import qualified Data.Maybe
 import Debug.Trace (traceShow)
 import Data.Scientific (toRealFloat, toBoundedInteger, isInteger)
 import Data.Maybe (fromMaybe)
-import Semantics.Desugar.DesugarBlocks (getSuccessPath, createGoalkeeper)
+import Semantics.Desugar.DesugarBlocks (createGoalkeeper)
 
 instance FromJSON Play where
     parseJSON = withObject "Play" (\obj -> do

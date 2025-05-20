@@ -2,13 +2,12 @@
 {-# LANGUAGE InstanceSigs #-}
 module Semantics.UIDSetter where
 
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
     ( Block(Block, always, blockMain, rescue),
       Task(Blocktask, Atomic),
       UID(..),
       Play(handlers, tasks) )
 import Control.Monad.Reader (Reader, MonadReader (ask), local)
-import Data.List.NonEmpty (toList, fromList)
 import Control.Monad (zipWithM)
 
 class UIDSettable a where

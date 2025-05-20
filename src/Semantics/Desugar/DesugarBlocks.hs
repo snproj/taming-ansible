@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Semantics.Desugar.DesugarBlocks where
 
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 import Control.Monad.Reader (MonadReader(ask), Reader, local, runReader)
 import Text.Regex.TDFA.CorePattern (P(NonEmpty))
 import qualified Text.Regex.TDFA.CorePattern as Data.List
@@ -23,19 +23,21 @@ createGoalkeeper bm r a = Atomic {
             (False, False) -> "BRA")),
         ("b", SimpleVarString (case bm of
             [] -> error "ERROR: bm cannot be empty!"
-            x -> getSuccessPath (last x))),
+            x -> getSetUID (last x))),
         ("r", SimpleVarString (case r of
             [] -> dummyPath
-            x -> getSuccessPath (last x))),
+            x -> getSetUID (last x))),
         ("a", SimpleVarString (case a of
             [] -> dummyPath
-            x -> getSuccessPath (last x)))
+            x -> getSetUID (last x)))
     ]),
-    aUID = UnsetUID
+    uid = UnsetUID
 }
 
-getSuccessPath :: Task -> String
-getSuccessPath = undefined
+getSetUID :: Task -> String
+getSetUID t = let
+    SetUID s = uid t
+    in s
 
 updateWhen :: Task -> (JBE_EXP -> JBE_EXP) -> Task
 updateWhen t f = case t of
@@ -59,17 +61,17 @@ updateWhen t f = case t of
 getSuccessIndicator :: Task -> JBE_EXP
 getSuccessIndicator t = case t of
     Atomic {} -> JBE_EXP_BINARYOP
-        (JBE_EXP_REGTEST (aUID t) JBE_TEST_DEFINED)
+        (JBE_EXP_REGTEST (uid t) JBE_TEST_DEFINED)
         JBE_OP_AND
-        (JBE_EXP_REGTEST (aUID t) JBE_TEST_SUCCEEDED)
+        (JBE_EXP_REGTEST (uid t) JBE_TEST_SUCCEEDED)
     Blocktask {} -> getSuccessIndicator (goalkeeper (block t))
 
 getFailureIndicator :: Task -> JBE_EXP
 getFailureIndicator t = case t of
     Atomic {} -> JBE_EXP_BINARYOP
-        (JBE_EXP_REGTEST (aUID t) JBE_TEST_DEFINED)
+        (JBE_EXP_REGTEST (uid t) JBE_TEST_DEFINED)
         JBE_OP_AND
-        (JBE_EXP_REGTEST (aUID t) JBE_TEST_FAILED)
+        (JBE_EXP_REGTEST (uid t) JBE_TEST_FAILED)
     Blocktask {} -> getFailureIndicator (goalkeeper (block t))
 
 drawSuccessArrow :: Task -> Task -> Task

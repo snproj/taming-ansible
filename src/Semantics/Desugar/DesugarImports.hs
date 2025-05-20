@@ -2,7 +2,7 @@
 {-# LANGUAGE InstanceSigs #-}
 module Semantics.Desugar.DesugarImports where
 
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 import Control.Monad.Reader (Reader, ask, local, runReader)
 import Data.Map (lookup, union)
 import Data.Maybe (fromMaybe, fromJust)
@@ -51,7 +51,7 @@ getImportsFromTask t = case t of
         let newBlockTask = Blocktask {
             blockAttributeSet = blockAttributeSet t,
             block = newBlock,
-            bUID = UnsetUID
+            uid = UnsetUID
         }
         let handlersFromBlock = map (blockParAtts (blockAttributeSet t)) (handlersFromBM ++ handlersFromR ++ handlersFromA)
         return ([newBlockTask], handlersFromBlock)

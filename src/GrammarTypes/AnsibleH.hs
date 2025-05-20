@@ -2,7 +2,7 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE GADTs #-}
-module GrammarTypes.AnsibleGrammarTypes
+module GrammarTypes.AnsibleH
     (
         RootDir(..),
         Play(..),
@@ -20,6 +20,7 @@ module GrammarTypes.AnsibleGrammarTypes
         Block(..),
         ModDecl(..),
         UID(..),
+        mustBeString,
     ) where
 
 import Data.List.NonEmpty
@@ -87,12 +88,12 @@ data Task
   = Atomic {
         atomicAttributeSet :: AtomicAttributeSet,
         modDecl :: ModDecl,
-        aUID :: UID
+        uid :: UID
     }
   | Blocktask {
         blockAttributeSet :: BlockAttributeSet,
         block :: Block,
-        bUID :: UID
+        uid :: UID
     }
   deriving (Generic, Show, Eq, Ord)
 instance Hashable Task
@@ -165,6 +166,10 @@ data Var
     | VarContainingJinja JinjaPhrase
     deriving (Generic, Show, Eq, Ord)
 instance Hashable Var
+
+mustBeString :: Var -> String
+mustBeString (SimpleVarString s) = s
+mustBeString _ = error "ERROR: mustBeString called on a non-string var!"
 -------------------------------------------
 --
 --         JINJA

@@ -4,7 +4,7 @@
 module Lexer.CombinedParser (parseRootDir) where
 import Lexer.DirectoryStacker (AnsibleDir (..), AnsibleYAMLFile (..), AnsibleFSThing (..))
 import Lexer.YAMLConverter ()
-import GrammarTypes.AnsibleGrammarTypes --(RootDir (..), Role (..), Playbook, Play, CompulsoryRoleDir (..), RoleSubDirFileName (..))
+import GrammarTypes.AnsibleH --(RootDir (..), Role (..), Playbook, Play, CompulsoryRoleDir (..), RoleSubDirFileName (..))
 import qualified Data.Map as Map
 import Data.Aeson.Types (fromJSON, Result, Parser, Value (..))
 import Data.Aeson (eitherDecode, decode)

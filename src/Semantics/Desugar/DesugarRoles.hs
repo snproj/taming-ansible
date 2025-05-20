@@ -1,7 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Semantics.Desugar.DesugarRoles where
 
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 
 
 toImport :: String -> Task
@@ -12,7 +12,7 @@ toImport s = Atomic {
         tasksFrom=SimpleVarString "main",
         handlersFrom=SimpleVarString "main"
     },
-    aUID = UnsetUID
+    uid = UnsetUID
 }
 
 rewriteRuleInlineRoles :: Play -> Play

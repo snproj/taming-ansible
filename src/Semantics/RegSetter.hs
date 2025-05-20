@@ -1,8 +1,8 @@
--- {-# LANGUAGE FlexibleInstances #-}
--- {-# LANGUAGE InstanceSigs #-}
--- module Semantics.RegSetter where
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE InstanceSigs #-}
+module Semantics.RegSetter where
 
--- import GrammarTypes.AnsibleGrammarTypes
+-- import GrammarTypes.AnsibleH
 -- import Data.List.NonEmpty (fromList, toList)
 
 -- class REGSettable a where

@@ -6,7 +6,7 @@ module Semantics.StaticVarResolver
         UVRResolvable(..),
     ) where
 import Control.Monad.Reader (Reader, MonadReader (..))
-import GrammarTypes.AnsibleGrammarTypes
+import GrammarTypes.AnsibleH
 import Data.Map (Map, lookup, union)
 
 newtype SymbolTable = SymbolTable (Map String Var)
