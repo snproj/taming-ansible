@@ -34,6 +34,10 @@ rewriteRuleHandler p = p {
             (not . null) ((atomicListen . atomicAttributeSet) _h `intersect` (atomicNotify . atomicAttributeSet) _t)
             ]
 
+rewriteRuleHandlerForRD :: RootDir -> RootDir
+rewriteRuleHandlerForRD rd = rd {
+    playbook = map rewriteRuleHandler (playbook rd)
+}
 
 -- -- handlerToTask :: TH HandlerMarker -> TH TaskMarker
 -- -- handlerToTask (Atomic x y z) = Atomic x y z

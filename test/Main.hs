@@ -1,7 +1,23 @@
 module Main (main) where
 import MinToBBFS.IgnoreErrorTransformation (trav)
-import GrammarTypes.BBFS
+import qualified GrammarTypes.BBFS
+import GrammarTypes.TBBFS
 import Data.Map
+import Lexer.DirectoryStacker (gatherDir)
+import Lexer.CombinedParser (parseRootDir)
+import Semantics.UIDSetter (setUIDsForRD)
+import Semantics.Desugar.DesugarRoles (rewriteRuleInlineRolesForRD)
+import Semantics.Desugar.DesugarImports (rewriteRuleImports)
+import Semantics.Desugar.DesugarBlocks (rewriteRuleBlockForRD)
+import Semantics.Desugar.DesugarHandlers (rewriteRuleHandlerForRD)
+import GrammarTypes.AnsibleH (RootDir)
+import Semantics.StaticVarResolver (rewriteRuleVarForRD)
+import MinToBBFS.MinToBBFS (Omega(..), Translatable (toBBFS))
+import GrammarTypes.TBBFSInfra (nop)
+import GrammarTypes.HToMin (convertToMin)
+import Control.Monad.Reader
+import SymbolicExecution.BBFSSymSem (idempotencyCheck)
+import GrammarTypes.BBFS (checkIntegrity)
 
 -- import Lexer.YAMLConverter
 -- import qualified Data.ByteString.Lazy as B
@@ -168,68 +184,182 @@ import Data.Map
 --     testWholeShebang "/home/sunrise/research/testansibleproj" "play"
 --     return ()
 
-dummyTrans :: String -> Expr
-dummyTrans msg = Trans (dummyFS msg)
+readAnsible :: String -> String -> IO RootDir
+readAnsible absoluteProjectPath playbookFileName = do
+    (name, dir) <- gatherDir absoluteProjectPath
+    -- print dir
+    let rd = parseRootDir playbookFileName dir
+    -- print rd
+    let uidrd = setUIDsForRD rd
+    return uidrd
 
-dummyFS :: String -> FS
-dummyFS msg = FS (fromList [(
-    Path ["dummyRoot", msg],
-    True
-    )])
+checkOsTExpr :: Expr
+checkOsTExpr = Ask (FS (fromList [(TemplatablePath [TSubP "target"], LitBool True)])) nop Err
+
+fileExprTExpr :: Expr
+fileExprTExpr = TChoice "state" (fromList [
+    ("absent", Trans (FS (fromList [(TemplatablePath [TSubP "path"], LitBool False)]))),
+    ("present", Trans (FS (fromList [(TemplatablePath [TSubP "path"], LitBool True)])))
+    ])
+
+assertFileExistsTExpr :: Expr
+assertFileExistsTExpr = Ask (FS (fromList [(TemplatablePath [TSubP "path"], LitBool True)])) nop Err
+
+gitCloneTExpr :: Expr
+gitCloneTExpr = Ask (FS (fromList [(TemplatablePath [TSubP "to"],LitBool True)])) Err (Trans (FS (fromList [(TemplatablePath [TSubP "to"],LitBool True)])))
+
+installLibTExpr :: Expr
+installLibTExpr = Ask (FS (fromList [(TemplatablePath [TSubP "prereq_install_loc"],LitBool True)])) (Trans (FS (fromList [(TemplatablePath [LitString "lib"],LitBool True)]))) Err
+
+singletonFS :: String -> Bool -> FS
+singletonFS s b = FS $ fromList [(TemplatablePath [TSubP s],LitBool b)]
+sa :: FS
+sa = singletonFS "a" True
+sb :: FS
+sb = singletonFS "b" True
+sr :: FS
+sr = singletonFS "r" True
+br :: Expr
+br = Ask sb nop (Ask sr nop Err)
+ba :: Expr
+ba = Ask sb (Ask sa nop Err) Err
+b :: Expr
+b = Ask sb nop Err
+bra :: Expr
+bra = Ask sa br Err
+gkTExpr :: Expr
+gkTExpr = TChoice "mode" $ fromList [
+    ("BRA",bra),
+    ("BA",ba),
+    ("BR",br),
+    ("B",b)
+    ]
+
+omega :: Omega
+omega = Omega { mse = fromList [
+    ("check_os",checkOsTExpr),
+    ("file",fileExprTExpr),
+    ("assert_file_exists",assertFileExistsTExpr),
+    ("git_clone",gitCloneTExpr),
+    ("install_lib",installLibTExpr),
+    ("_gk",gkTExpr)
+] }
+
+desugar :: RootDir -> RootDir
+desugar = rewriteRuleHandlerForRD.rewriteRuleHandlerForRD.rewriteRuleBlockForRD.rewriteRuleVarForRD.rewriteRuleImports.rewriteRuleInlineRolesForRD
 
 main :: IO ()
 main = do
-    let expr = Seq
-            (dummyTrans "hoo")
-            (Seq
-                (Ask
-                    (dummyFS "q")
-                    (Seq
-                        (Ask
-                            (dummyFS "qq")
-                            Err
-                            (dummyTrans "hihi"))
-                        (dummyTrans "bob"))
-                    (dummyTrans "ho"))
-                (dummyTrans "hi"))
-    let (expr', b) = trav "hello" expr
-    print expr'
-    print b
+    ansibleH <- readAnsible "/home/sunrise/taming-ansible/example-from-paper" "play"
+    -- print ansibleH
+    let ansibleMin = (convertToMin . desugar) ansibleH
+    -- print ansibleMin
+    let bbfs = runReader (toBBFS ansibleMin) omega
+    -- print bbfs
+    -- let bbfses = Prelude.map (\am -> runReader (toBBFS am) omega) ansibleMin
+    -- print bbfses
+    let idemp = idempotencyCheck bbfs
+    print idemp
     return ()
 
-umm :: Expr
-umm = Seq
-        (Trans (FS (fromList [(Path ["dummyRoot","hoo"],True)])))
-        (Seq
-            (Ask
-                (FS (fromList [(Path ["dummyRoot","q"],True)]))
-                (Ask
-                    (FS (fromList [(Path ["dummyRoot","qq"],True)]))
-                    Err
-                    (Trans (FS (fromList [(Path ["dummyRoot","hihi"],True)]))))
-                (Trans (FS (fromList [(Path ["dummyRoot","ho"],True)]))))
-            (Ask
-                (FS (fromList [(Path ["failure","hello"],True)]))
-                (Trans (FS (fromList [])))
-                (Trans (FS (fromList [(Path ["dummyRoot","hi"],True)])))))
+-- main :: IO ()
+-- main = do
+--     let expr = GrammarTypes.BBFS.Ask
+--                             (dummyFS "qq")
+--                             GrammarTypes.BBFS.Err
+--                             (dummyTrans "hihi")
+--     let i = idempotencyCheck expr
+--     print i
+--     return ()
 
-umb :: Expr
-umb = Seq
-        (Trans (FS (fromList [(Path ["dummyRoot","hoo"],True)])))
-        (Seq
-            (Ask
-                (FS (fromList [(Path ["dummyRoot","q"],True)]))
-                (Seq
-                    (Ask
-                        (FS (fromList [(Path ["dummyRoot","qq"],True)]))
-                        Err
-                        (Trans (FS (fromList [(Path ["dummyRoot","hihi"],True)]))))
-                    (Ask
-                        (FS (fromList [(Path ["failure","hello"],True)]))
-                        (Trans (FS (fromList [])))
-                        (Trans (FS (fromList [(Path ["dummyRoot","bob"],True)])))))
-                (Trans (FS (fromList [(Path ["dummyRoot","ho"],True)]))))
-            (Ask
-                (FS (fromList [(Path ["failure","hello"],True)]))
-                (Trans (FS (fromList [])))
-                (Trans (FS (fromList [(Path ["dummyRoot","hi"],True)])))))
+-- main :: IO ()
+-- main = do
+--     let fs = GrammarTypes.BBFS.FS (fromList [(GrammarTypes.BBFS.Path ["dummyRoot","qq"],True)])
+--     let x = checkIntegrity fs
+--     print x
+--     return ()
+
+-- main :: IO ()
+-- main = do
+--     (name, dir) <- gatherDir "/home/sunrise/taming-ansible/example-from-paper"
+--     -- print dir
+--     let rd = parseRootDir "play" dir
+--     -- print rd
+--     let uidrd = setUIDsForRD rd
+--     -- print uidrd
+--     let inlinerolerd = rewriteRuleInlineRolesForRD uidrd
+--     -- print inlinerolerd
+--     let importrd = rewriteRuleImports inlinerolerd
+--     -- print importrd
+--     let blockrd = rewriteRuleBlockForRD importrd
+--     print blockrd
+--     -- let looprd = rewriteRuleHandlerForRD blockrd
+--     -- let handlerrd = rewriteRuleHandlerForRD looprd
+--     -- print handlerrd
+--     return ()
+
+dummyTrans :: String -> GrammarTypes.BBFS.Expr
+dummyTrans msg = GrammarTypes.BBFS.Trans (dummyFS msg)
+
+dummyFS :: String -> GrammarTypes.BBFS.FS
+dummyFS msg = GrammarTypes.BBFS.FS (fromList [(
+    GrammarTypes.BBFS.Path ["dummyRoot", msg],
+    True
+    )])
+
+-- main :: IO ()
+-- main = do
+--     let expr = Seq
+--             (dummyTrans "hoo")
+--             (Seq
+--                 (Ask
+--                     (dummyFS "q")
+--                     (Seq
+--                         (Ask
+--                             (dummyFS "qq")
+--                             Err
+--                             (dummyTrans "hihi"))
+--                         (dummyTrans "bob"))
+--                     (dummyTrans "ho"))
+--                 (dummyTrans "hi"))
+--     let (expr', b) = trav "hello" expr
+--     print expr'
+--     print b
+--     return ()
+
+-- umm :: Expr
+-- umm = Seq
+--         (Trans (FS (fromList [(Path ["dummyRoot","hoo"],True)])))
+--         (Seq
+--             (Ask
+--                 (FS (fromList [(Path ["dummyRoot","q"],True)]))
+--                 (Ask
+--                     (FS (fromList [(Path ["dummyRoot","qq"],True)]))
+--                     Err
+--                     (Trans (FS (fromList [(Path ["dummyRoot","hihi"],True)]))))
+--                 (Trans (FS (fromList [(Path ["dummyRoot","ho"],True)]))))
+--             (Ask
+--                 (FS (fromList [(Path ["failure","hello"],True)]))
+--                 (Trans (FS (fromList [])))
+--                 (Trans (FS (fromList [(Path ["dummyRoot","hi"],True)])))))
+
+-- umb :: Expr
+-- umb = Seq
+--         (Trans (FS (fromList [(Path ["dummyRoot","hoo"],True)])))
+--         (Seq
+--             (Ask
+--                 (FS (fromList [(Path ["dummyRoot","q"],True)]))
+--                 (Seq
+--                     (Ask
+--                         (FS (fromList [(Path ["dummyRoot","qq"],True)]))
+--                         Err
+--                         (Trans (FS (fromList [(Path ["dummyRoot","hihi"],True)]))))
+--                     (Ask
+--                         (FS (fromList [(Path ["failure","hello"],True)]))
+--                         (Trans (FS (fromList [])))
+--                         (Trans (FS (fromList [(Path ["dummyRoot","bob"],True)])))))
+--                 (Trans (FS (fromList [(Path ["dummyRoot","ho"],True)]))))
+--             (Ask
+--                 (FS (fromList [(Path ["failure","hello"],True)]))
+--                 (Trans (FS (fromList [])))
+--                 (Trans (FS (fromList [(Path ["dummyRoot","hi"],True)])))))

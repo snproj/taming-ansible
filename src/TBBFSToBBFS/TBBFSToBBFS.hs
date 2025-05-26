@@ -12,7 +12,7 @@ import Data.List.Split
 data Delta = Delta {
     mss :: Map String String,
     msb :: Map String Bool
-}
+} deriving (Show, Eq, Ord)
 
 class Template a b where
     resolve :: a -> Reader Delta b
@@ -37,7 +37,7 @@ instance Template PathPart [String] where
         TSubP s -> do
             d <- ask
             case Data.Map.lookup s (mss d) of
-                Nothing -> error "ERROR: no mapping found to resolve TSubP!"
+                Nothing -> error ("ERROR: no mapping found to resolve TSubP!" ++ show d)
                 Just s' -> return (splitOn "\\" s') -- TODO: sort out how to treat multi-part paths
 
 instance Template TemplatablePath Path where

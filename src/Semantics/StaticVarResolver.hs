@@ -4,10 +4,11 @@ module Semantics.StaticVarResolver
     (
         SymbolTable(..),
         UVRResolvable(..),
+        rewriteRuleVarForRD
     ) where
-import Control.Monad.Reader (Reader, MonadReader (..))
+import Control.Monad.Reader (Reader, MonadReader (..), runReader)
 import GrammarTypes.AnsibleH
-import Data.Map (Map, lookup, union)
+import Data.Map (Map, lookup, union, empty)
 
 newtype SymbolTable = SymbolTable (Map String Var)
 
@@ -18,7 +19,10 @@ class UVRResolvable a where
     resolveContainedUVRs :: a -> Reader SymbolTable a
 
 
-
+rewriteRuleVarForRD :: RootDir -> RootDir
+rewriteRuleVarForRD rd = rd {
+    playbook = map (\p -> runReader (resolveContainedUVRs p) (SymbolTable empty)) (playbook rd)
+}
 
 
 
@@ -108,6 +112,7 @@ instance UVRResolvable Block where
         _blockMain' <- traverse resolveContainedUVRs _blockMain
         _rescue' <- traverse resolveContainedUVRs _rescue
         _always' <- traverse resolveContainedUVRs _always
+        -- TODO: check if goalkeeper needs to be resolved as well
         return (Block _blockMain' _rescue' _always' _goalkeeper)
 
 
@@ -147,7 +152,7 @@ resolveJSE jse = case jse of
     JSE_UVR s -> do
         SymbolTable msv <- ask
         case Data.Map.lookup s msv of
-            Just v -> return $ JSE_STRING $ show v
+            Just v -> return $ JSE_STRING $ (\(SimpleVarString s')->s') v
             Nothing -> return jse
 
 resolveJBE :: JBE_EXP -> Reader SymbolTable JBE_EXP
@@ -158,6 +163,19 @@ resolveJBE jbe = case jbe of
     x -> return x
 
 
+-- resolveJJP :: JinjaPhrase -> Reader SymbolTable Var
+-- resolveJJP (SingletonUVR s) = do
+--     SymbolTable msv <- ask
+--     case Data.Map.lookup s msv of
+--         Just v -> return v
+--         Nothing -> return $ VarContainingJinja $ SingletonUVR s
+-- resolveJJP (AllEventuallyString ss) = do
+--     resolved <- traverse resolveJSE ss
+--     return $ VarContainingJinja $ AllEventuallyString resolved
+-- resolveJJP (JBEPhrase jbe) = do
+--     resolved <- resolveJBE jbe
+--     return $ VarContainingJinja $ JBEPhrase resolved
+
 resolveJJP :: JinjaPhrase -> Reader SymbolTable Var
 resolveJJP (SingletonUVR s) = do
     SymbolTable msv <- ask
@@ -166,7 +184,11 @@ resolveJJP (SingletonUVR s) = do
         Nothing -> return $ VarContainingJinja $ SingletonUVR s
 resolveJJP (AllEventuallyString ss) = do
     resolved <- traverse resolveJSE ss
-    return $ VarContainingJinja $ AllEventuallyString resolved
+    let allResolved = all (\case {JSE_STRING _ -> True; JSE_UVR _ -> False}) resolved
+    if allResolved then
+        return $ SimpleVarString $ concatMap (\(JSE_STRING s) -> s) resolved
+    else
+        error "ERROR: some unresolved vars!"
 resolveJJP (JBEPhrase jbe) = do
     resolved <- resolveJBE jbe
     return $ VarContainingJinja $ JBEPhrase resolved

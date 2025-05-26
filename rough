@@ -1,0 +1,88 @@
+[
+    Seq
+        (Ask
+            (FS (fromList [(Path ["windows"],True)]))
+            (Trans (FS (fromList [])))
+            Err)
+        (Seq 
+            (Trans (FS (fromList [(Path ["run","_tasks0"],True)]))) 
+            (Trans (FS (fromList [(Path ["success","_tasks0"],True)])))),
+    
+    Seq
+        (Trans (FS (fromList [(Path ["prereq_install_dir"],False)])))
+        (Seq
+            (Trans (FS (fromList [(Path ["run","_tasks1"],True)])))
+            (Trans (FS (fromList [(Path ["success","_tasks1"],True)])))),
+    
+    Seq
+        (Ask
+            (FS (fromList [(Path ["prereq_install_dir"],True)]))
+            (Trans (FS (fromList [])))
+            (Seq
+                (Trans (FS (fromList [(Path ["run","_tasks2_THBlock0"],True)])))
+                (Trans (FS (fromList [(Path ["failure","_tasks2_THBlock0"],True)])))))
+        (Ask
+            (FS (fromList [(Path ["failure","_tasks2_THBlock0"],True)]))
+            (Trans (FS (fromList [])))
+            (Seq
+                (Trans (FS (fromList [(Path ["run","_tasks2_THBlock0"],True)])))
+                (Trans (FS (fromList [(Path ["success","_tasks2_THBlock0"],True)]))))),
+    
+    Ask
+        (FS (fromList [(Path ["run","_tasks2_THBlock0"],True)]))
+        (Ask
+            (FS (fromList [(Path ["failure","_tasks2_THBlock0"],True)]))
+            (Seq
+                (Ask
+                    (FS (fromList [(Path ["prereq_install_dir"],True)]))
+                    (Seq
+                        (Trans (FS (fromList [(Path ["run","_tasks2_THRescue0"],True)])))
+                        (Trans (FS (fromList [(Path ["failure","_tasks2_THRescue0"],True)]))))
+                    (Trans (FS (fromList [(Path ["prereq_install_dir"],True)]))))
+                (Ask
+                    (FS (fromList [(Path ["failure","_tasks2_THRescue0"],True)]))
+                    (Trans (FS (fromList [])))
+                    (Seq
+                        (Trans (FS (fromList [(Path ["run","_tasks2_THRescue0"],True)])))
+                        (Trans (FS (fromList [(Path ["success","_tasks2_THRescue0"],True)]))))))
+            (Trans (FS (fromList []))))
+        (Ask
+            (FS (fromList [(Path ["failure","_tasks2_THBlock0"],True)]))
+            (Trans (FS (fromList [])))
+            (Trans (FS (fromList [])))),
+    
+    Ask
+        (FS (fromList [(Path ["run","_tasks2_THRescue0"],True)]))
+        (Ask
+            (FS (fromList [(Path ["success","_tasks2_THRescue0"],True)]))
+            (Seq
+                (Ask
+                    (FS (fromList [(Path ["prereq_install_dir"],True)]))
+                    (Trans (FS (fromList [(Path ["lib"],True)])))
+                    (Seq
+                        (Trans (FS (fromList [(Path ["run","_tasks2_THRescue1"],True)])))
+                        (Trans (FS (fromList [(Path ["failure","_tasks2_THRescue1"],True)])))))
+                (Ask
+                    (FS (fromList [(Path ["failure","_tasks2_THRescue1"],True)]))
+                    (Trans (FS (fromList [])))
+                    (Seq
+                        (Trans (FS (fromList [(Path ["run","_tasks2_THRescue1"],True)])))
+                        (Trans (FS (fromList [(Path ["success","_tasks2_THRescue1"],True)]))))))
+            (Trans (FS (fromList []))))
+        (Ask
+            (FS (fromList [(Path ["success","_tasks2_THRescue0"],True)]))
+            (Trans (FS (fromList [])))
+            (Trans (FS (fromList [])))),
+    
+    Seq
+        (Ask
+            (FS (fromList [(Path ["_tasks2_THBlock0"],True)]))
+            (Trans (FS (fromList [])))
+            (Ask
+                (FS (fromList [(Path ["_tasks2_THRescue1"],True)]))
+                (Trans (FS (fromList [])))
+                Err))
+        (Seq
+            (Trans (FS (fromList [(Path ["run","_tasks2_THBlock0"],True)])))
+            (Trans (FS (fromList [(Path ["success","_tasks2_THBlock0"],True)]))))
+]

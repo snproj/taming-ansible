@@ -21,3 +21,8 @@ rewriteRuleInlineRoles p = p {
     tasks = Prelude.map toImport (roleNames p) ++ tasks p
 }
 
+rewriteRuleInlineRolesForRD :: RootDir -> RootDir
+rewriteRuleInlineRolesForRD rd = rd {
+    playbook = map rewriteRuleInlineRoles (playbook rd)
+}
+

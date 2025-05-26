@@ -46,7 +46,7 @@ getImportsFromTask t = case t of
             blockMain = ebm,
             rescue = er,
             always = ea,
-            goalkeeper = createGoalkeeper ebm er ea
+            goalkeeper = Nothing
         }
         let newBlockTask = Blocktask {
             blockAttributeSet = blockAttributeSet t,

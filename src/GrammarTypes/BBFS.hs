@@ -4,8 +4,11 @@ module GrammarTypes.BBFS (
     Expr(..),
     updateFS,
     checkIntegrity,
+    fleshOut
 ) where
 import Data.Map
+import Debug.Trace
+import Data.Aeson (Value(Bool))
 
 newtype Path = Path [String] deriving (Show, Eq, Ord)
 
@@ -26,6 +29,7 @@ newtype FS = FS (Map Path Bool) deriving (Show, Eq, Ord)
 
 -- TODO: optimize if path already present
 updatePathPresent :: FS -> Path -> FS
+updatePathPresent fs (Path []) = fs
 updatePathPresent (FS mpb) pathToAdd = let
     mpb' = insert pathToAdd True mpb
     in updatePathPresent (FS mpb') (getParent pathToAdd)
@@ -42,13 +46,31 @@ updateFS b fs p = if b then
     else
         updatePathAbsent fs p
 
-checkIntegrity :: FS -> Bool
-checkIntegrity fs = let
+-- checkIntegrity :: FS -> Bool
+-- checkIntegrity fs = let
+--     FS mpb = fs
+--     pbList = toList mpb
+--     emptyFS = FS empty
+--     fs' = Prelude.foldl (\efs (p,b) -> updateFS b efs p) emptyFS pbList
+--     in traceShow (fs,fs') $ fs == fs'
+
+fleshOut :: FS -> FS
+fleshOut fs = let
     FS mpb = fs
     pbList = toList mpb
     emptyFS = FS empty
     fs' = Prelude.foldl (\efs (p,b) -> updateFS b efs p) emptyFS pbList
-    in fs == fs'
+    in fs'
+
+checkIntegrity :: FS -> Bool
+checkIntegrity fs = let
+    FS mpb = fs
+    onlyPositives = Prelude.map fst $ toList $ Data.Map.filter id mpb
+    onlyNegatives = Prelude.map fst $ toList $ Data.Map.filter not mpb
+    in all (`checkForContradictions` onlyNegatives) onlyPositives
+    where
+        checkForContradictions :: Path -> [Path] -> Bool
+        checkForContradictions positivePath = all (\n -> not $ n `isAncestorOf` positivePath)
 
 
 
@@ -58,3 +80,8 @@ data Expr
     | Seq Expr Expr
     | Trans FS
     deriving (Show, Eq, Ord)
+
+
+-- (
+--     FS (fromList [(Path ["dummyRoot","qq"],True)]),
+--     FS (fromList [(Path ["dummyRoot"],True),(Path ["dummyRoot","qq"],True)]))

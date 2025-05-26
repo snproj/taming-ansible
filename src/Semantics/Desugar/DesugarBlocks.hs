@@ -14,7 +14,14 @@ dummyPath = "dummyPath"
 
 createGoalkeeper :: [Task] -> [Task] -> [Task] -> Task
 createGoalkeeper bm r a = Atomic {
-    atomicAttributeSet = AtomicAttributeSet {},
+    atomicAttributeSet = AtomicAttributeSet {
+            atomicNotify = [],
+            atomicLoop = Nothing,
+            atomicListen = [],
+            atomicVars = Data.Map.empty,
+            atomicWhen = JBE_EXP_PRIM True,
+            atomicIgnoreErrors = False
+    },
     modDecl = GenericModDecl "_gk" (Data.Map.fromList [
         ("mode", SimpleVarString (case (null r, null a) of
             (True, True) -> "B"
@@ -31,7 +38,7 @@ createGoalkeeper bm r a = Atomic {
             [] -> dummyPath
             x -> getSetUID (last x)))
     ]),
-    uid = UnsetUID
+    uid = SetUID (getSetUID (head bm) ++ "_GOALKEEPER") -- Ugly hack lmao but should work
 }
 
 getSetUID :: Task -> String
@@ -54,7 +61,7 @@ updateWhen t f = case t of
             always = case always (block t) of
                 [] -> []
                 a:as -> updateWhen a f : as,
-            goalkeeper = updateWhen (goalkeeper (block t)) f
+            goalkeeper = Just $ updateWhen (fromJust $ goalkeeper (block t)) f
         }
     }
 
@@ -64,7 +71,7 @@ getSuccessIndicator t = case t of
         (JBE_EXP_REGTEST (uid t) JBE_TEST_DEFINED)
         JBE_OP_AND
         (JBE_EXP_REGTEST (uid t) JBE_TEST_SUCCEEDED)
-    Blocktask {} -> getSuccessIndicator (goalkeeper (block t))
+    Blocktask {} -> getSuccessIndicator (fromJust $ goalkeeper (block t))
 
 getFailureIndicator :: Task -> JBE_EXP
 getFailureIndicator t = case t of
@@ -72,7 +79,7 @@ getFailureIndicator t = case t of
         (JBE_EXP_REGTEST (uid t) JBE_TEST_DEFINED)
         JBE_OP_AND
         (JBE_EXP_REGTEST (uid t) JBE_TEST_FAILED)
-    Blocktask {} -> getFailureIndicator (goalkeeper (block t))
+    Blocktask {} -> getFailureIndicator (fromJust $ goalkeeper (block t))
 
 drawSuccessArrow :: Task -> Task -> Task
 drawSuccessArrow t1 t2 = updateWhen t2 (\w -> JBE_EXP_BINARYOP w JBE_OP_AND (getSuccessIndicator t1))
@@ -139,7 +146,18 @@ setIgnoreError t = case t of
     }
     Blocktask {} -> t {
         block = (block t) {
-            goalkeeper = setIgnoreError (goalkeeper (block t))
+            goalkeeper = Just $ setIgnoreError (fromJust $ goalkeeper (block t))
+        }
+    }
+
+normalBlockIgnoreError :: Task -> Task
+normalBlockIgnoreError t = case t of
+    Atomic {} -> t
+    Blocktask {} -> t {
+        block = (block t) {
+            blockMain = map setIgnoreError (blockMain (block t)),
+            rescue = map setIgnoreError (rescue (block t)),
+            always = map setIgnoreError (always (block t))
         }
     }
 
@@ -149,17 +167,33 @@ flattenBlock t = case t of
     Blocktask {} -> concatMap flattenBlock (blockMain (block t)) ++
                     concatMap flattenBlock (rescue (block t)) ++
                     concatMap flattenBlock (always (block t)) ++
-                    [goalkeeper (block t)]
+                    [fromJust $ goalkeeper (block t)]
+
+cascadeCreateGoalkeepers :: Task -> Task
+cascadeCreateGoalkeepers t = case t of
+    Atomic {} -> t
+    Blocktask {} -> case goalkeeper (block t) of
+        Nothing -> t {
+            block = (block t) {
+                goalkeeper = Just $ createGoalkeeper (blockMain (block t)) (rescue (block t)) (always (block t))
+                }
+            }
+        Just _ -> error "ERROR: no goalkeepers should exist yet at this point!"
 
 prepareIfBlock :: Task -> [Task]
 prepareIfBlock t = case t of
     Atomic {} -> [t]
-    Blocktask {} -> (flattenBlock . setIgnoreError . drawArrowsInBlock . (\x -> runReader (propagateBAS x) (blockAttributeSet t))) t
+    Blocktask {} -> (flattenBlock . normalBlockIgnoreError . drawArrowsInBlock . (\x -> runReader (propagateBAS x) (blockAttributeSet t))) t
 
 rewriteRuleBlock :: Play -> Play
 rewriteRuleBlock p = p {
-    tasks = concatMap prepareIfBlock (tasks p),
-    handlers = concatMap prepareIfBlock (handlers p)
+    tasks = concatMap (prepareIfBlock . cascadeCreateGoalkeepers) (tasks p),
+    handlers = concatMap (prepareIfBlock . cascadeCreateGoalkeepers) (handlers p)
+}
+
+rewriteRuleBlockForRD :: RootDir -> RootDir
+rewriteRuleBlockForRD rd = rd {
+    playbook = map rewriteRuleBlock (playbook rd)
 }
 
 -- -- addRegister :: AttributeSet -> AttributeSet

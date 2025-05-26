@@ -57,6 +57,17 @@ rewriteRuleLoop t = let
     unrolled = getUnrolled t
     in unrolled ++ [createLoopGoalkeeper t unrolled]
 
+rewriteRuleLoopForRD :: RootDir -> RootDir
+rewriteRuleLoopForRD rd = rd {
+    playbook = Prelude.map rewriteRuleLoopForPlay (playbook rd)
+}
+    where
+        rewriteRuleLoopForPlay :: Play -> Play
+        rewriteRuleLoopForPlay p = p {
+            tasks = concatMap rewriteRuleLoop (tasks p),
+            handlers = concatMap rewriteRuleLoop (handlers p)
+        }
+
 
     -- where
     --     createParams :: [Task] -> Map String Var

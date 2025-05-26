@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE FlexibleInstances #-}
 module MinToBBFS.MinToBBFS where
 import GrammarTypes.BBFS (Expr (..), Path (..), FS (..))
 import GrammarTypes.AnsibleMin (Task (..), ModDecl (..), Var (..))
@@ -92,8 +93,11 @@ class Translatable a where
 --         let expr = runReader (resolve texpr) delta
 --         return expr
 
+-- bracketWithmSmR :: String -> Expr -> Expr
+-- bracketWithmSmR u expr = Seq (mR u) (Seq expr (mS u))
+
 bracketWithmSmR :: String -> Expr -> Expr
-bracketWithmSmR u expr = Seq (mS u) (Seq expr (mR u))
+bracketWithmSmR u expr = Seq expr (Seq (mR u) (mS u))
 
 instance Translatable Task where
     toBBFS :: Task -> Reader Omega Expr
@@ -106,3 +110,16 @@ instance Translatable Task where
         let whenExpr = whenTransformation t bracketedExpr
         let ignoreErrorExpr = ignoreErrorTransformation t whenExpr
         return ignoreErrorExpr
+
+instance Translatable [Task] where
+    toBBFS :: [Task] -> Reader Omega Expr
+    toBBFS ts = do
+        bbfss <- traverse toBBFS ts
+        return $ seqTogether bbfss
+        where
+            seqTogether :: [Expr] -> Expr
+            seqTogether (e:es)
+                | length es > 1 = Seq e (seqTogether es)
+                | length es == 1 = Seq e (head es)
+                | otherwise = error "ERROR: should not reach empty tail!"
+            seqTogether _ = error "ERROR: should not reach empty list!"

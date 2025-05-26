@@ -1,7 +1,7 @@
 module MinToBBFS.IgnoreErrorTransformation where
 import GrammarTypes.BBFS
 import GrammarTypes.AnsibleMin
-import GrammarTypes.BBFSInfra (mF, nop, failureRoot)
+import GrammarTypes.BBFSInfra (mF, nop, failureRoot, mR)
 import Data.Map
 
 ignoreErrorTransformation :: Task -> Expr -> Expr
@@ -23,7 +23,7 @@ cFs u m = Ask (FS (fromList [(
 trav :: String -> Expr -> (Expr, Bool)
 trav u expr = case expr of
     Seq ex1 ex2 -> case ex1 of
-        Err -> (mF u, True)
+        Err -> (Seq (mR u) (mF u), True)
         Ask q ifBranch elseBranch -> let
             (ifBranch', ifBranchHasErr) = trav u ifBranch
             (elseBranch', elseBranchHasErr) = trav u elseBranch
@@ -43,5 +43,5 @@ trav u expr = case expr of
         (elseBranch', elseBranchHasErr) = trav u elseBranch
         branchesHaveErr = ifBranchHasErr || elseBranchHasErr
         in (Ask q ifBranch' elseBranch', branchesHaveErr)
-    Err -> (mF u, True)
+    Err -> (Seq (mR u) (mF u), True)
     Trans fs -> (Trans fs, False) -- False because end of linked list

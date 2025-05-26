@@ -6,7 +6,7 @@ successRoot :: String
 successRoot = "success"
 
 runRoot :: String
-runRoot = "success"
+runRoot = "run"
 
 failureRoot :: String
 failureRoot = "failure"
@@ -23,7 +23,7 @@ mR :: String -> Expr
 mR = writeAbstractPath runRoot True
 
 mS :: String -> Expr
-mS = writeAbstractPath runRoot True
+mS = writeAbstractPath successRoot True
 
 mF :: String -> Expr
 mF = writeAbstractPath failureRoot True

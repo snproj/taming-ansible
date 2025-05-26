@@ -8,15 +8,19 @@ import GrammarTypes.BBFSInfra (nop, runRoot, successRoot, failureRoot)
 whenTransformation :: Task -> Expr -> Expr
 whenTransformation t expr = let
     w = (when . attributeSet) t
-    
-    in undefined
+    lamb = getTests w
+    expr' = shExpand lamb empty expr w
+    in expr'
 
 newtype Test = Test (String, JBE_TEST) deriving (Show, Eq, Ord)
 
-lookupTest :: String -> JBE_TEST -> Map Test Bool -> Bool
-lookupTest u test phi = let
-    test' = Test (u, test)
-    in fromJust $ Data.Map.lookup test' phi
+getTests :: JBE_EXP -> [Test]
+getTests w = case w of
+    JBE_EXP_REGTEST n t -> [Test (n,t)]
+    JBE_EXP_BINARYOP e1 _ e2 -> getTests e1 ++ getTests e2
+    JBE_EXP_NOT e -> getTests e
+    JBE_EXP_PARENEXP e -> getTests e
+    JBE_EXP_PRIM _ -> []
 
 shExpand :: [Test] -> Map Test Bool -> Expr -> JBE_EXP -> Expr
 shExpand lamb phi m j
@@ -48,3 +52,8 @@ eval j phi = case j of
     JBE_EXP_NOT ex -> not (eval ex phi)
     JBE_EXP_PARENEXP ex -> eval ex phi
     JBE_EXP_PRIM b -> b
+
+lookupTest :: String -> JBE_TEST -> Map Test Bool -> Bool
+lookupTest u test phi = let
+    test' = Test (u, test)
+    in fromJust $ Data.Map.lookup test' phi

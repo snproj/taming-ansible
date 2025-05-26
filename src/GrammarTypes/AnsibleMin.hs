@@ -14,19 +14,19 @@ data Task = Task {
     attributeSet :: AttributeSet,
     modDecl :: ModDecl,
     uid :: String
-}
+}deriving (Show, Eq, Ord)
 
 data ModDecl = ModDecl {
     name :: String,
     params :: Map String Var
-}
+}deriving (Show, Eq, Ord)
 
-data Var = SimpleVarBool Bool | SimpleVarString String
+data Var = SimpleVarBool Bool | SimpleVarString String deriving (Show, Eq, Ord)
 
 data AttributeSet = AttributeSet {
     when :: JBE_EXP,
     ignoreErrors :: Bool
-}
+}deriving (Show, Eq, Ord)
 
 data JBE_EXP
     = JBE_EXP_REGTEST String JBE_TEST

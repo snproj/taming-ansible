@@ -87,7 +87,7 @@ instance FromJSON Var where
         Bool b -> return (SimpleVarBool b)
         _ -> error "ERROR: Value is not a String, Array, Number, Bool or Object!"
 
-instance FromJSON ModDecl
+-- instance FromJSON ModDecl
 
 getRemaining :: Object -> [Key] -> (KeyMap Value, [Key])
 getRemaining obj attSetKeyList = let
@@ -116,12 +116,13 @@ instance FromJSON Task where
                             blockMain= _block,
                             rescue = _rescue',
                             always = _always',
-                            goalkeeper = createGoalkeeper _block _rescue' _always'
+                            goalkeeper = Nothing
                             }) UnsetUID)
                     else do
                         let modName = head other
-                        _mod <- obj .: modName :: Parser (Map String Var)
-                        let _modDecl = getModDeclVariant (toString modName) _mod
+                        _mod <- obj .:? modName :: (Parser (Maybe (Map String Var)))
+                        let _mod' = fromMaybe Data.Map.empty _mod
+                        let _modDecl = getModDeclVariant (toString modName) _mod'
                         _atomicAttSet <- parseJSON (toJSON _attSetKM) :: Parser AtomicAttributeSet
                         return (Atomic _atomicAttSet _modDecl UnsetUID)
         )

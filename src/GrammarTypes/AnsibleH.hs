@@ -137,7 +137,7 @@ data Block = Block {
     blockMain :: [Task],
     rescue :: [Task],
     always :: [Task],
-    goalkeeper :: Task
+    goalkeeper :: Maybe Task
 } deriving (Generic, Show, Eq, Ord)
 instance Hashable Block
 

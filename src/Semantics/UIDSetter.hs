@@ -3,11 +3,11 @@
 module Semantics.UIDSetter where
 
 import GrammarTypes.AnsibleH
-    ( Block(Block, always, blockMain, rescue),
+    ( Block(Block, always, blockMain, rescue, goalkeeper),
       Task(Blocktask, Atomic),
       UID(..),
-      Play(handlers, tasks) )
-import Control.Monad.Reader (Reader, MonadReader (ask), local)
+      Play(handlers, tasks), RootDir (..) )
+import Control.Monad.Reader (Reader, MonadReader (ask), local, runReader)
 import Control.Monad (zipWithM)
 
 class UIDSettable a where
@@ -46,7 +46,8 @@ instance UIDSettable Task where
         return (Blocktask attSet (Block{
             blockMain = bm,
             rescue = rsc,
-            always = alw
+            always = alw,
+            goalkeeper = Nothing
         }) blockUID)
 
 instance UIDSettable Play where
@@ -59,5 +60,22 @@ instance UIDSettable Play where
         _handlers <- zipWithM (zipper (SetUID "") "handlers") sequenceNumbers (handlers p)
         return p {tasks=_tasks, handlers=_handlers}
 
+-- TODO: refactor into class if this works
+zipperP :: UID -> String -> Int -> Play -> Reader UID Play
+zipperP parentUID s seqNum th =
+    let indivUID = buildUID parentUID (s ++ show seqNum)
+     in local (const indivUID) (setUID th)
 
+instance UIDSettable [Play] where
+    setUID :: [Play] -> Reader UID [Play] 
+    setUID ps = do
+        parentUID <- ask -- e.g. "r1_tasks_myfile_task"
+        let sequenceNumbers = [0..]
+        let x = zipWith (zipperP parentUID "PLAY") sequenceNumbers ps
+        sequence x
+
+setUIDsForRD :: RootDir -> RootDir
+setUIDsForRD rd = rd {
+    playbook = map (\p -> runReader (setUID p) (SetUID "hello")) (playbook rd)
+}
 

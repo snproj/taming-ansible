@@ -68,6 +68,7 @@ library
                       GrammarTypes.BBFSInfra,
                       GrammarTypes.HToMin,
                       GrammarTypes.TBBFS,
+                      GrammarTypes.TBBFSInfra,
                       Semantics.Desugar.DesugarRoles,
                       Semantics.Desugar.DesugarLoops,
                       Semantics.Desugar.DesugarHandlers,

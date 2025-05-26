@@ -1,19 +1,31 @@
 {-# LANGUAGE LambdaCase #-}
 module SymbolicExecution.BBFSSymSem where
 import GrammarTypes.BBFS (Expr (..), FS (..))
-import SymbolicExecution.Utils (Kappa (..), satTT, toForm)
+import SymbolicExecution.Utils (Kappa (..), satTT, toForm, override, overrideKappa)
 import Data.Set
 import PropLogic
+import qualified Data.Map
+import Data.Aeson (Value(Bool))
+import Debug.Trace
 
 data SymRes = SymErr | SymSuccess (FS, Kappa) deriving (Show, Eq, Ord)
 
 idempotencyCheck :: Expr -> Bool
-idempotencyCheck = undefined
-
--- firstRun :: Expr -> Set SymRes
--- firstRun = undefined
-
--- secondRun :: 
+idempotencyCheck program = let
+    startingSE = FS Data.Map.empty
+    startingKappa = Kappa T
+    firstRun = symbolicSem program (startingSE, startingKappa)
+    firstRunWithoutErrs = Data.Set.filter (\case {SymErr->False; _ -> True}) firstRun -- honestly couldve just removed it since its a set lol but whatever
+    secondRunChecks = Data.Set.map secondRunIndiv firstRunWithoutErrs
+    in and (toList secondRunChecks)
+    where
+        secondRunIndiv :: SymRes -> Bool
+        secondRunIndiv SymErr = error "ERROR: tried doing second run on a SymErr!"
+        secondRunIndiv (SymSuccess (fs, k)) = let
+            res = symbolicSem program (fs,k)
+            in case toList res of
+                [r] -> r /= SymErr
+                _ -> False
 
 symbolicSem :: Expr -> (FS, Kappa) -> Set SymRes
 symbolicSem expr (fs, k) = case expr of
@@ -26,8 +38,9 @@ symbolicSem expr (fs, k) = case expr of
         Kappa kform = k
         Kappa qform = toForm q
 
-        st = satTT (Kappa (conj [kform, qform]))
-        stForms = Prelude.map ((\(Kappa x) -> x) . toForm) st
+        bleh = conj [kform, qform]
+        st = traceShow bleh $ satTT (Kappa (bleh))
+        stForms = traceShow st $ Prelude.map ((\(Kappa x) -> x) . toForm) st
         kt = Kappa (conj [kform, disj stForms])
 
         sf = satTT (Kappa (conj [kform, N qform]))
@@ -38,7 +51,8 @@ symbolicSem expr (fs, k) = case expr of
             (_,[]) -> symbolicSem ifBranch (fs, kt)
             ([],_) -> symbolicSem elseBranch (fs, kf)
             (_,_) -> Data.Set.union (symbolicSem ifBranch (fs, kt)) (symbolicSem elseBranch (fs, kf))
-    Trans (FS mpb) -> let
-        
-        in undefined
+    Trans t -> let
+        fs' = override t fs
+        k' = overrideKappa t k
+        in fromList [SymSuccess (fs', k')]
 
