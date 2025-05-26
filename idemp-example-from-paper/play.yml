@@ -1,0 +1,21 @@
+---
+- hostname: prod_servers
+  vars:
+    prereq_install_dir: "/tmp/prereq"
+  tasks:
+    - name: fail if not windows
+      check_os:
+        target: "windows"
+    - name: git clone prereq
+      git_clone:
+        to: "{{prereq_install_dir}}"
+      notify: topic1
+    - name: install library
+      install_lib:
+        prereq_install_loc: "{{prereq_install_dir}}"
+  handlers:
+    - name: clean up temp
+      listen: topic1
+      file:
+        path: "{{prereq_install_dir}}"
+        state: "absent"

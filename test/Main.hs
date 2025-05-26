@@ -250,12 +250,12 @@ desugar = rewriteRuleHandlerForRD.rewriteRuleHandlerForRD.rewriteRuleBlockForRD.
 
 main :: IO ()
 main = do
-    ansibleH <- readAnsible "/home/sunrise/taming-ansible/example-from-paper" "play"
+    ansibleH <- readAnsible "/home/sunrise/taming-ansible/idemp-example-from-paper" "play"
     -- print ansibleH
     let ansibleMin = (convertToMin . desugar) ansibleH
-    -- print ansibleMin
+    print ansibleMin
     let bbfs = runReader (toBBFS ansibleMin) omega
-    -- print bbfs
+    print bbfs
     -- let bbfses = Prelude.map (\am -> runReader (toBBFS am) omega) ansibleMin
     -- print bbfses
     let idemp = idempotencyCheck bbfs

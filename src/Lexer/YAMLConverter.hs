@@ -151,7 +151,7 @@ getModDeclVariant s msv = case s of
 
 
 attSetKeyListGLOBAL :: [Key]
-attSetKeyListGLOBAL = map fromString ["name", "force_handlers", "notify", "loop", "loop_control", "when", "changed_when", "failed_when", "until", "retries", "register"]
+attSetKeyListGLOBAL = map fromString ["name", "force_handlers", "notify", "listen", "loop", "loop_control", "when", "changed_when", "failed_when", "until", "retries", "register"]
 defaultLoopString :: Var
 defaultLoopString = SimpleVarString "item"
 defaultWhen :: JBE_EXP
@@ -181,7 +181,7 @@ instance FromJSON AtomicAttributeSet where
         -- Now the parts that we have to piece together ourselves
         _rawLoopSection <- obj .:? fromString "loop" :: Parser (Maybe Array)
         _rawLoopControlSectionAlreadyDefined <- obj .:? fromString "loop_control" :: Parser (Maybe Object)
-        let _atomicLoop = do
+        let _atomicLoop = traceShow ("HEHEHEHEHEHEHEHEHEHE" ++ show _atomicListen) $ do
                 _loop <- _rawLoopSection
                 let _loopControl = case _rawLoopControlSectionAlreadyDefined of
                         Just _loopControl' -> _loopControl'
