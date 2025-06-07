@@ -1,18 +1,19 @@
 {-# LANGUAGE LambdaCase #-}
 module SymbolicExecution.BBFSSymSem where
 import GrammarTypes.BBFS (Expr (..), FS (..))
-import SymbolicExecution.Utils (Kappa (..), satTT, toForm, override, overrideKappa)
+import SymbolicExecution.Utils (Kappa (..), satTT, toForm, override, overrideKappa, getStartingFS)
 import Data.Set
 import PropLogic
 import qualified Data.Map
 import Data.Aeson (Value(Bool))
 import Debug.Trace
+import GrammarTypes.AnsibleMin
 
 data SymRes = SymErr | SymSuccess (FS, Kappa) deriving (Show, Eq, Ord)
 
-idempotencyCheck :: Expr -> Bool
-idempotencyCheck program = let
-    startingSE = FS Data.Map.empty
+idempotencyCheck :: [Task] -> Expr -> Bool
+idempotencyCheck ts program = let
+    startingSE = getStartingFS ts
     startingKappa = Kappa T
     firstRun = symbolicSem program (startingSE, startingKappa)
     firstRunWithoutErrs = Data.Set.filter (\case {SymErr->False; _ -> True}) firstRun -- honestly couldve just removed it since its a set lol but whatever
@@ -29,7 +30,7 @@ idempotencyCheck program = let
 
 symbolicSem :: Expr -> (FS, Kappa) -> Set SymRes
 symbolicSem expr (fs, k) = case expr of
-    Err -> empty
+    Err -> singleton SymErr
     Seq e1 e2 -> let
         e1Reses = symbolicSem e1 (fs,k)
         setOfE2Reses = Data.Set.map (\case {SymErr -> singleton SymErr; SymSuccess (fs', k') -> symbolicSem e2 (fs', k')}) e1Reses
@@ -37,10 +38,11 @@ symbolicSem expr (fs, k) = case expr of
     Ask q ifBranch elseBranch -> let
         Kappa kform = k
         Kappa qform = toForm q
-
-        bleh = conj [kform, qform]
-        st = traceShow bleh $ satTT (Kappa (bleh))
-        stForms = traceShow st $ Prelude.map ((\(Kappa x) -> x) . toForm) st
+        
+        st = satTT (Kappa (conj [kform, qform]))
+        -- bleh = conj [kform, qform]
+        -- st = traceShow bleh $ satTT (Kappa (bleh))
+        stForms = Prelude.map ((\(Kappa x) -> x) . toForm) st
         kt = Kappa (conj [kform, disj stForms])
 
         sf = satTT (Kappa (conj [kform, N qform]))

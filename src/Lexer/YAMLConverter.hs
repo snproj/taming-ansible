@@ -22,7 +22,6 @@ import Data.List.NonEmpty (NonEmpty (..), nonEmpty, singleton, fromList)
 import Control.Applicative ((<|>))
 import Text.Regex.TDFA ((=~), AllTextMatches (..))
 import qualified Data.Maybe
-import Debug.Trace (traceShow)
 import Data.Scientific (toRealFloat, toBoundedInteger, isInteger)
 import Data.Maybe (fromMaybe)
 import Semantics.Desugar.DesugarBlocks (createGoalkeeper)
@@ -40,7 +39,7 @@ instance FromJSON Play where
             roleNames=fromMaybe [] _roleNames,
             vars = fromMaybe Data.Map.empty _vars
         }
-        return (traceShow "" res)
+        return res
         )
 
 wordIsJJ :: String -> Bool
@@ -181,7 +180,7 @@ instance FromJSON AtomicAttributeSet where
         -- Now the parts that we have to piece together ourselves
         _rawLoopSection <- obj .:? fromString "loop" :: Parser (Maybe Array)
         _rawLoopControlSectionAlreadyDefined <- obj .:? fromString "loop_control" :: Parser (Maybe Object)
-        let _atomicLoop = traceShow ("HEHEHEHEHEHEHEHEHEHE" ++ show _atomicListen) $ do
+        let _atomicLoop = do
                 _loop <- _rawLoopSection
                 let _loopControl = case _rawLoopControlSectionAlreadyDefined of
                         Just _loopControl' -> _loopControl'

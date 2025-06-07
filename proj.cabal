@@ -34,12 +34,6 @@ license:            MIT
 -- The file containing the license text.
 license-file:       LICENSE
 
--- The package author(s).
-author:             Sunrise
-
--- An email address to which users can send suggestions, bug reports, and patches.
-maintainer:         not.moonset@gmail.com
-
 -- A copyright notice.
 -- copyright:
 build-type:         Simple
@@ -170,6 +164,9 @@ test-suite taming-ansible-test
         aeson ^>=2.2.3.0,
         yaml ^>=0.11.11.2,
         containers,
+
+-- An email address to which users can send suggestions, bug reports, and patches.
+
         directory,
         filepath,
         unordered-containers,

@@ -1,10 +1,12 @@
 module SymbolicExecution.Utils where
 
 import PropLogic
-import GrammarTypes.BBFS (Path, FS (..), updateFS, checkIntegrity, fleshOut)
+import GrammarTypes.BBFS (Path (Path), FS (..), updateFS, checkIntegrity, fleshOut)
 import Olist
 import Data.Map
 import Debug.Trace (trace, traceShow)
+import GrammarTypes.AnsibleMin
+import GrammarTypes.BBFSInfra (successRoot, runRoot, failureRoot)
 
 fsToVal :: FS -> Valuator Path
 fsToVal (FS mpb) = olist (toList mpb)
@@ -28,9 +30,12 @@ satTT (Kappa pf) = let
     -- not be the ones we started with in the truthtable
     possiblyUnsoundMaps = Prelude.map (assembleMap v) satTTList
     possiblyUnsoundFSes = Prelude.map FS possiblyUnsoundMaps
-    soundFSes = traceShow possiblyUnsoundFSes $ Prelude.filter checkIntegrity possiblyUnsoundFSes
-    fleshedOutFSes = traceShow soundFSes $ Prelude.map fleshOut soundFSes
-    in traceShow fleshedOutFSes $ fleshedOutFSes
+    -- soundFSes = traceShow possiblyUnsoundFSes $ Prelude.filter checkIntegrity possiblyUnsoundFSes
+    -- fleshedOutFSes = traceShow soundFSes $ Prelude.map fleshOut soundFSes
+    -- in traceShow fleshedOutFSes $ fleshedOutFSes
+    soundFSes = Prelude.filter checkIntegrity possiblyUnsoundFSes
+    fleshedOutFSes = Prelude.map fleshOut soundFSes
+    in fleshedOutFSes
     where
         assembleMap :: Olist Path -> [Bool] -> Map Path Bool
         assembleMap [] [] = Data.Map.empty
@@ -54,3 +59,20 @@ overrideKappa fs k = let
     forms = Prelude.map toForm overriddenSatFSs
     rawForms = Prelude.map (\(Kappa f)->f) forms
     in Kappa $ disj rawForms
+
+
+
+
+
+getStartingFS :: [Task] -> FS
+getStartingFS ts = let
+    uids = Prelude.map uid ts
+    aRoots = [successRoot, runRoot, failureRoot]
+    abstractPaths = concatMap (getAbstractPaths aRoots) uids
+    allFalse = fromList [(p, False) | p <- abstractPaths]
+    in FS allFalse
+    where
+        getAbstractPath :: String -> String -> Path
+        getAbstractPath abstractRoot uidString = Path [abstractRoot, uidString]
+        getAbstractPaths :: [String] -> String -> [Path]
+        getAbstractPaths abstractRoots uidString = Prelude.map (`getAbstractPath` uidString) abstractRoots
