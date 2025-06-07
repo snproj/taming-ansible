@@ -90,8 +90,6 @@ main :: IO ()
 main = do
     args <- getArgs
     cwd <- getCurrentDirectory
-    print args
-    print cwd
     case args of
         (path:_) -> do
             ansibleH <- readAnsible (cwd ++ "/" ++ path) "play"
@@ -99,16 +97,16 @@ main = do
             print ansibleH
             print "END A^H *************************************************************************"
             let ansibleMin = (convertToMin . desugar) ansibleH
-            print "END A^H *************************************************************************"
+            print "BEGIN A^C ***********************************************************************"
             print ansibleMin
-            print "END A^H *************************************************************************"
+            print "END A^C *************************************************************************"
             let bbfs = runReader (toBBFS ansibleMin) omega
-            print "END A^H *************************************************************************"
+            print "BEGIN BBFS **********************************************************************"
             print bbfs
-            print "END A^H *************************************************************************"
+            print "END BBFS ************************************************************************"
             let idemp = idempotencyCheck ansibleMin bbfs
-            print "END A^H *************************************************************************"
+            print "BEGIN IDEM RESULT ***************************************************************"
             print idemp
-            print "END A^H *************************************************************************"
+            print "END IDEM RESULT *****************************************************************"
             return ()
         _ -> putStrLn "USAGE: test-executable <path-to-ansible-directory>"
